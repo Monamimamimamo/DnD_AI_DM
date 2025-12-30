@@ -1,0 +1,10 @@
+build/
+.gradle/
+.idea/
+*.iml
+*.log
+game_data.db
+.DS_Store
+.git/
+.gitignore
+

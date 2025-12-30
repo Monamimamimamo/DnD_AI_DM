@@ -1,0 +1,76 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.2.0'
+    id 'io.spring.dependency-management' version '1.1.4'
+}
+
+group = 'com.dnd'
+version = '1.0.0'
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // Spring Boot
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-websocket'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    
+    // HTTP клиент для работы с Ollama и SRD API
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    
+    // JSON обработка (Gson для совместимости с существующим кодом)
+    implementation 'com.google.code.gson:gson:2.10.1'
+    
+    // SQLite для хранения состояния игры
+    implementation 'org.xerial:sqlite-jdbc:3.44.1.0'
+    
+    // JWT для аутентификации
+    implementation 'io.jsonwebtoken:jjwt-api:0.12.3'
+    implementation 'io.jsonwebtoken:jjwt-impl:0.12.3'
+    implementation 'io.jsonwebtoken:jjwt-jackson:0.12.3'
+    
+    // BCrypt для хеширования паролей
+    implementation 'org.mindrot:jbcrypt:0.4'
+    
+    // Swagger/OpenAPI для документации API
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.3.0'
+    
+    // Тестирование
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'junit:junit:4.13.2'
+}
+
+// Настройки для Spring Boot bootRun задачи
+tasks.named('bootRun', org.springframework.boot.gradle.tasks.run.BootRun).configure {
+    jvmArgs = [
+        '-Xmx4g',
+        '-Xms1g', 
+        '-XX:+UseG1GC',
+        '-XX:MaxMetaspaceSize=512m',
+        '-XX:MaxDirectMemorySize=1g'
+    ]
+}
+
+jar {
+    enabled = false // Отключаем обычный JAR, используем Spring Boot JAR
+    archiveClassifier = ''
+}
+
+// Spring Boot создает исполняемый JAR автоматически
+tasks.named('bootJar') {
+    archiveBaseName = 'ai-dungeon-master'
+    archiveVersion = project.version
+    mainClass = 'com.dnd.api.GameApiApplication'
+}
+
+tasks.named('test') {
+    useJUnit()
+}
+

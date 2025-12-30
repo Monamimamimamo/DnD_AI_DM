@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>D&D AI Dungeon Master - WebSocket Test</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #1a1a2e;
+            color: #eee;
+        }
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .panel {
+            background: #16213e;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #0f3460;
+        }
+        h1 {
+            color: #e94560;
+            text-align: center;
+        }
+        h2 {
+            color: #533483;
+            margin-top: 0;
+        }
+        button {
+            background: #e94560;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #c73650;
+        }
+        button:disabled {
+            background: #555;
+            cursor: not-allowed;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 8px;
+            margin: 5px 0;
+            border: 1px solid #0f3460;
+            border-radius: 4px;
+            background: #0f3460;
+            color: #eee;
+            box-sizing: border-box;
+        }
+        textarea {
+            min-height: 100px;
+            font-family: monospace;
+        }
+        #messages {
+            height: 400px;
+            overflow-y: auto;
+            background: #0f3460;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .message {
+            margin: 5px 0;
+            padding: 5px;
+            border-radius: 3px;
+        }
+        .message.system {
+            background: #16213e;
+            color: #aaa;
+        }
+        .message.dm {
+            background: #533483;
+            color: #fff;
+        }
+        .message.player {
+            background: #0f3460;
+            color: #fff;
+        }
+        .message.error {
+            background: #8b0000;
+            color: #fff;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            text-align: center;
+            font-weight: bold;
+        }
+        .status.connected {
+            background: #2d5016;
+            color: #90ee90;
+        }
+        .status.disconnected {
+            background: #501616;
+            color: #ff6b6b;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎲 D&D AI Dungeon Master - WebSocket Test</h1>
+    
+    <div id="status" class="status disconnected">Отключено</div>
+    
+    <div class="container">
+        <div class="panel">
+            <h2>Авторизация</h2>
+            <div id="loginSection">
+                <label for="username">Имя пользователя:</label>
+                <input type="text" id="username" placeholder="Имя пользователя" value="test">
+                <label for="password">Пароль:</label>
+                <input type="password" id="password" placeholder="Пароль" value="test123">
+                <button onclick="login()">Войти</button>
+                <button onclick="register()">Зарегистрироваться</button>
+            </div>
+            
+            <div id="tokenSection" style="display: none; margin-top: 10px;">
+                <div id="userInfo" style="margin-top: 10px; padding: 10px; background: #0f3460; border-radius: 4px; display: none;">
+                    <p><strong>Пользователь:</strong> <span id="userName"></span></p>
+                    <p style="font-size: 11px; color: #aaa; margin-top: 5px;">✅ Токен авторизации активен и используется автоматически</p>
+                </div>
+                <details style="margin-top: 10px;">
+                    <summary style="cursor: pointer; color: #aaa; font-size: 12px;">Показать/изменить токен (для отладки)</summary>
+                    <input type="text" id="authToken" placeholder="JWT токен (автоматически заполняется после входа)" style="width: 100%; font-size: 11px; margin-top: 5px;">
+                    <button onclick="useManualToken()" style="background: #533483; margin-top: 5px;">Использовать этот токен</button>
+                </details>
+            </div>
+            
+            <h2>Управление</h2>
+            <h3>Создать кампанию</h3>
+            <button onclick="createCampaign()">Создать новую кампанию</button>
+            <div id="campaignInfo" style="margin: 10px 0; padding: 10px; background: #0f3460; border-radius: 4px; display: none;">
+                <p><strong>Campaign ID:</strong> <span id="campaignId"></span></p>
+                <p><strong>WebSocket URL:</strong> <span id="wsUrl"></span></p>
+            </div>
+            <h3>Подключение</h3>
+            <label for="campaignIdInput">Campaign ID:</label>
+            <input type="text" id="campaignIdInput" placeholder="Введите Campaign ID для подключения">
+            <button id="connectBtn" onclick="connect()">Подключиться к кампании</button>
+            <button id="disconnectBtn" onclick="disconnect()" disabled>Отключиться</button>
+            
+            <h3>Информация о персонаже</h3>
+            <label for="charName">Имя персонажа:</label>
+            <input type="text" id="charName" placeholder="Имя персонажа" value="Арагорн">
+            <label for="charClass">Класс:</label>
+            <input type="text" id="charClass" placeholder="Класс (FIGHTER, WIZARD, etc.)" value="FIGHTER">
+            <label for="charRace">Раса:</label>
+            <input type="text" id="charRace" placeholder="Раса (HUMAN, ELF, etc.)" value="HUMAN">
+            <label for="charLevel">Уровень:</label>
+            <input type="number" id="charLevel" placeholder="Уровень" value="1" min="1" max="20">
+            <button onclick="sendCharacterInfo()">Отправить информацию о персонаже</button>
+            
+            <h3>Управление кампанией</h3>
+            <button id="startCampaignBtn" onclick="startCampaign()" disabled style="background: #533483;">Начать кампанию</button>
+            <div id="campaignStatus" style="margin: 10px 0; padding: 10px; background: #0f3460; border-radius: 4px; display: none;">
+                <p><strong>Статус:</strong> <span id="statusText">Ожидание</span></p>
+                <p><strong>Роль:</strong> <span id="roleText">-</span></p>
+                <p><strong>Игроки:</strong> <span id="playersList">-</span></p>
+            </div>
+            <h3>Действие</h3>
+            <label for="actionText">Ваше действие:</label>
+            <textarea id="actionText" placeholder="Опишите ваше действие..."></textarea>
+            <button onclick="sendAction()" id="actionBtn" disabled>Отправить действие</button>
+        </div>
+        
+        <div class="panel">
+            <h2>Сообщения</h2>
+            <div id="messages"></div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let campaignId = null;
+        let characterName = null;
+        let role = null; // "host" или "player"
+        let campaignStatus = "waiting"; // "waiting" или "started"
+        let authToken = localStorage.getItem('authToken') || null;
+        let currentUsername = null;
+
+        // Проверяем сохраненный токен при загрузке
+        window.onload = function() {
+            if (authToken) {
+                const tokenInput = document.getElementById('authToken');
+                if (tokenInput) {
+                    tokenInput.value = authToken;
+                }
+                document.getElementById('tokenSection').style.display = 'block';
+                document.getElementById('loginSection').style.display = 'none';
+                validateToken();
+            }
+        };
+
+        async function login() {
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+            
+            if (!username || !password) {
+                alert('Введите имя пользователя и пароль');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    authToken = data.token;
+                    currentUsername = data.username;
+                    localStorage.setItem('authToken', authToken);
+                    
+                    // Безопасно устанавливаем значение токена, если элемент существует
+                    const tokenInput = document.getElementById('authToken');
+                    if (tokenInput) {
+                        tokenInput.value = authToken;
+                    }
+                    
+                    // Показываем секцию с токеном и информацией о пользователе
+                    document.getElementById('tokenSection').style.display = 'block';
+                    document.getElementById('loginSection').style.display = 'none';
+                    document.getElementById('userName').textContent = currentUsername;
+                    document.getElementById('userInfo').style.display = 'block';
+                    addMessage('system', `✅ Вход выполнен: ${currentUsername}`);
+                    addMessage('system', '✅ Токен авторизации сохранен и будет использоваться автоматически');
+                } else {
+                    addMessage('error', `❌ Ошибка входа: ${data.error}`);
+                }
+            } catch (error) {
+                addMessage('error', `❌ Ошибка: ${error.message}`);
+            }
+        }
+
+        async function register() {
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+            
+            if (!username || !password) {
+                alert('Введите имя пользователя и пароль');
+                return;
+            }
+            
+            // Генерируем email из username для регистрации
+            const email = username + '@test.local';
+            
+            try {
+                const response = await fetch('/api/auth/register', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ username, email, password })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    addMessage('system', `✅ Регистрация успешна: ${username}. Теперь выполните вход.`);
+                    // Автоматически выполняем вход после регистрации
+                    login();
+                } else {
+                    addMessage('error', `❌ Ошибка регистрации: ${data.error}`);
+                }
+            } catch (error) {
+                addMessage('error', `❌ Ошибка: ${error.message}`);
+            }
+        }
+
+        function useManualToken() {
+            const tokenInput = document.getElementById('authToken');
+            if (!tokenInput) {
+                alert('Поле токена не найдено');
+                return;
+            }
+            const token = tokenInput.value.trim();
+            if (token) {
+                authToken = token;
+                localStorage.setItem('authToken', token);
+                validateToken();
+            } else {
+                alert('Введите токен');
+            }
+        }
+
+        async function validateToken() {
+            if (!authToken) return;
+            
+            try {
+                const response = await fetch('/api/auth/me', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    currentUsername = data.username;
+                    document.getElementById('userName').textContent = currentUsername;
+                    document.getElementById('userInfo').style.display = 'block';
+                    document.getElementById('tokenSection').style.display = 'block';
+                    document.getElementById('loginSection').style.display = 'none';
+                } else {
+                    authToken = null;
+                    localStorage.removeItem('authToken');
+                    document.getElementById('tokenSection').style.display = 'none';
+                    document.getElementById('loginSection').style.display = 'block';
+                    addMessage('error', `❌ Токен невалиден: ${data.error}`);
+                }
+            } catch (error) {
+                addMessage('error', `❌ Ошибка проверки токена: ${error.message}`);
+            }
+        }
+
+        async function createCampaign() {
+            if (!authToken) {
+                alert('Сначала выполните вход или укажите токен авторизации!');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/campaigns', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify({})
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    campaignId = data.campaign.session_id;
+                    document.getElementById('campaignId').textContent = campaignId;
+                    document.getElementById('wsUrl').textContent = data.websocket_url || `ws://${window.location.host}/ws/campaign/${campaignId}`;
+                    document.getElementById('campaignInfo').style.display = 'block';
+                    document.getElementById('campaignIdInput').value = campaignId;
+                    addMessage('system', `✅ Кампания создана: ${campaignId}`);
+                    
+                    // Автоматически подключаемся к созданной кампании
+                    setTimeout(() => {
+                        connectToCampaign(campaignId);
+                    }, 100);
+                } else {
+                    addMessage('error', `❌ Ошибка создания кампании: ${data.error}`);
+                }
+            } catch (error) {
+                addMessage('error', `❌ Ошибка: ${error.message}`);
+            }
+        }
+        
+        function connectToCampaign(campaignIdToConnect) {
+            if (!authToken) {
+                alert('Сначала выполните вход или укажите токен авторизации!');
+                return;
+            }
+            
+            campaignId = campaignIdToConnect || document.getElementById('campaignIdInput').value.trim();
+            if (!campaignId) {
+                alert('Введите Campaign ID или создайте новую кампанию!');
+                return;
+            }
+            
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws/campaign/${campaignId}?token=${encodeURIComponent(authToken)}`;
+            
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = function() {
+                addMessage('system', '✅ Подключено к серверу');
+                document.getElementById('status').textContent = 'Подключено';
+                document.getElementById('status').className = 'status connected';
+                document.getElementById('connectBtn').disabled = true;
+                document.getElementById('disconnectBtn').disabled = false;
+                document.getElementById('campaignStatus').style.display = 'block';
+            };
+            
+            ws.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                handleMessage(data);
+            };
+            
+            ws.onerror = function(error) {
+                console.error('WebSocket error:', error);
+            };
+            
+            ws.onclose = async function(event) {
+                let message = '🔌 Соединение закрыто';
+                
+                if (event.code === 1006) {
+                    // Проверяем статус кампании для точного сообщения
+                    try {
+                        const statusResponse = await fetch(`/api/campaigns/${campaignId}/status`, {
+                            method: 'GET',
+                            headers: { 'Authorization': `Bearer ${authToken}` }
+                        });
+                        
+                        if (statusResponse.ok) {
+                            const statusData = await statusResponse.json();
+                            if (statusData.isHostConnected === false) {
+                                // Хост не подключен
+                                message = '❌ Не удалось подключиться: хост не подключен к кампании. Ожидайте переподключения хоста.';
+                            } else if (statusData.isStarted === true) {
+                                // Кампания начата
+                                message = '❌ Не удалось подключиться: кампания уже начата и имеет активные сессии. Новые подключения запрещены.';
+                            } else {
+                                // Другая причина
+                                message = '❌ Не удалось выполнить подключение. Проверьте ID кампании и токен авторизации.';
+                            }
+                        } else if (statusResponse.status === 404) {
+                            message = '❌ Кампания с ID "' + campaignId + '" не существует.';
+                        } else if (statusResponse.status === 401 || statusResponse.status === 403) {
+                            message = '❌ Не удалось выполнить подключение. Проверьте токен авторизации.';
+                        } else {
+                            // Другая ошибка
+                            message = '❌ Не удалось выполнить подключение. Проверьте ID кампании и токен авторизации.';
+                        }
+                    } catch (error) {
+                        // Ошибка при проверке - показываем общее сообщение
+                        message = '❌ Не удалось выполнить подключение. Проверьте ID кампании и токен авторизации.';
+                    }
+                } else if (event.code === 1008) {
+                    message = '❌ Подключение отклонено. Проверьте токен авторизации.';
+                } else if (event.code !== 1000) {
+                    message = `🔌 Соединение закрыто (код: ${event.code})`;
+                }
+                
+                addMessage('error', message);
+                document.getElementById('status').textContent = 'Отключено';
+                document.getElementById('status').className = 'status disconnected';
+                document.getElementById('connectBtn').disabled = false;
+                document.getElementById('disconnectBtn').disabled = true;
+            };
+        }
+
+        function connect() {
+            const inputCampaignId = document.getElementById('campaignIdInput').value.trim();
+            if (!inputCampaignId) {
+                alert('Введите Campaign ID или создайте новую кампанию!');
+                return;
+            }
+            
+            connectToCampaign(inputCampaignId);
+        }
+
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        }
+
+        function handleMessage(data) {
+            console.log('Получено сообщение:', data);
+            
+            switch(data.type) {
+                case 'campaign_created':
+                    role = 'host';
+                    document.getElementById('roleText').textContent = 'Хост';
+                    document.getElementById('startCampaignBtn').disabled = false;
+                    addMessage('system', `🎮 Кампания создана: ${data.campaign_id}`);
+                    addMessage('system', `📖 Начальная сцена: ${data.initial_scene}`);
+                    if (data.main_quest) {
+                        addMessage('system', `🎯 Квест: ${data.main_quest.title || data.main_quest.goal}`);
+                    }
+                    addMessage('system', '⏳ Дождитесь подключения игроков и нажмите "Начать кампанию"');
+                    break;
+                    
+                case 'campaign_loaded':
+                    role = data.role || 'host';
+                    document.getElementById('roleText').textContent = role === 'host' ? 'Хост' : 'Игрок';
+                    campaignStatus = data.status || 'waiting';
+                    document.getElementById('statusText').textContent = campaignStatus === 'started' ? 'Начата' : 'Ожидание';
+                    
+                    if (role === 'host') {
+                        document.getElementById('startCampaignBtn').disabled = campaignStatus === 'started';
+                        addMessage('system', `📂 Кампания загружена: ${data.campaign_id}`);
+                        if (data.message) {
+                            addMessage('system', data.message);
+                        } else if (campaignStatus !== 'started') {
+                            addMessage('system', '⏳ Дождитесь подключения игроков и нажмите "Начать кампанию"');
+                        }
+                    } else {
+                        document.getElementById('startCampaignBtn').disabled = true;
+                        addMessage('system', `📂 Вы подключились к кампании: ${data.campaign_id}`);
+                    }
+                    
+                    if (data.characters && data.characters.length > 0) {
+                        addMessage('system', `👥 Персонажи в кампании: ${data.characters.map(c => c.name).join(', ')}`);
+                    }
+                    break;
+                    
+                case 'campaign_joined':
+                    role = data.role || 'player';
+                    document.getElementById('roleText').textContent = role === 'host' ? 'Хост' : 'Игрок';
+                    campaignStatus = data.status || 'waiting';
+                    document.getElementById('statusText').textContent = campaignStatus === 'started' ? 'Начата' : 'Ожидание';
+                    document.getElementById('startCampaignBtn').disabled = role !== 'host' || campaignStatus === 'started';
+                    
+                    addMessage('system', `📂 ${data.message || 'Вы подключились к кампании: ' + data.campaign_id}`);
+                    
+                    // Восстанавливаем персонажа, если он был
+                    if (data.character_name) {
+                        characterName = data.character_name;
+                        if (data.character) {
+                            addMessage('system', `✅ Персонаж восстановлен: ${characterName}`);
+                            addMessage('system', `📊 Класс: ${data.character.class}, Раса: ${data.character.race}, Уровень: ${data.character.level}`);
+                        }
+                    }
+                    
+                    // Показываем ключевую информацию о кампании
+                    if (data.current_scene) {
+                        addMessage('system', `📖 Текущая сцена: ${data.current_scene}`);
+                    }
+                    if (data.current_location) {
+                        addMessage('system', `🗺️ Локация: ${data.current_location}`);
+                    }
+                    if (data.main_quest) {
+                        const questTitle = data.main_quest.title || data.main_quest.goal || JSON.stringify(data.main_quest);
+                        addMessage('system', `🎯 Квест: ${questTitle}`);
+                    }
+                    
+                    if (campaignStatus === 'started') {
+                        addMessage('system', '🎮 Кампания уже начата');
+                        document.getElementById('actionBtn').disabled = !characterName;
+                    } else {
+                        if (role === 'host') {
+                            addMessage('system', '⏳ Дождитесь подключения игроков и нажмите "Начать кампанию"');
+                        } else {
+                            addMessage('system', '⏳ Ожидайте начала кампании от хоста');
+                        }
+                    }
+                    break;
+                    
+                case 'player_joined':
+                    addMessage('system', `👋 ${data.message}`);
+                    break;
+                    
+                case 'player_left':
+                    addMessage('system', `👋 ${data.message}`);
+                    break;
+                    
+                case 'host_left':
+                    addMessage('error', `❌ ${data.message}`);
+                    addMessage('system', '⏳ Ожидайте переподключения хоста. Подключения временно закрыты.');
+                    // Отключаемся, так как хост покинул кампанию
+                    if (ws) {
+                        ws.close();
+                    }
+                    break;
+                    
+                case 'player_character_added':
+                    addMessage('system', `👤 ${data.message}`);
+                    break;
+                    
+                case 'players_list':
+                    document.getElementById('playersList').textContent = data.players.join(', ') || 'Нет игроков';
+                    break;
+                    
+                case 'campaign_started':
+                    campaignStatus = 'started';
+                    document.getElementById('statusText').textContent = 'Начата';
+                    document.getElementById('startCampaignBtn').disabled = true;
+                    document.getElementById('actionBtn').disabled = false;
+                    addMessage('system', `🎮 ${data.message}`);
+                    if (data.initial_situation) {
+                        addMessage('dm', `📍 ${data.initial_situation}`);
+                    }
+                    if (data.current_location) {
+                        addMessage('system', `🗺️ Локация: ${data.current_location}`);
+                    }
+                    break;
+                    
+                case 'request_character':
+                    addMessage('system', `💬 ${data.message}`);
+                    break;
+                    
+                case 'character_added':
+                    characterName = data.character.name;
+                    addMessage('system', `✅ Персонаж добавлен: ${characterName}`);
+                    addMessage('system', `📊 Класс: ${data.character.class}, Раса: ${data.character.race}, Уровень: ${data.character.level}`);
+                    // Если кампания уже начата, можно сразу действовать
+                    if (campaignStatus === 'started') {
+                        document.getElementById('actionBtn').disabled = false;
+                    }
+                    break;
+                    
+                case 'situation':
+                    addMessage('dm', `📍 ${data.situation}`);
+                    if (data.current_location) {
+                        addMessage('system', `🗺️ Локация: ${data.current_location}`);
+                    }
+                    break;
+                    
+                case 'dm_response':
+                    if (data.character_name && data.character_name !== characterName) {
+                        addMessage('player', `⚔️ ${data.character_name}: ${data.action}`);
+                    }
+                    addMessage('dm', `🎭 ${data.dm_response}`);
+                    if (data.current_location) {
+                        addMessage('system', `🗺️ Локация: ${data.current_location}`);
+                    }
+                    if (data.success !== undefined) {
+                        addMessage('system', `✅ Успех: ${data.success}`);
+                    }
+                    if (data.quest_advanced) {
+                        addMessage('system', '🎯 Прогресс квеста!');
+                    }
+                    if (data.story_completed) {
+                        addMessage('system', '🏆 История завершена!');
+                    }
+                    break;
+                    
+                case 'error':
+                    addMessage('error', `❌ Ошибка: ${data.message}`);
+                    break;
+                    
+                default:
+                    addMessage('system', `📨 Неизвестное сообщение: ${JSON.stringify(data)}`);
+            }
+        }
+
+        function sendCharacterInfo() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                alert('Сначала подключитесь к серверу!');
+                return;
+            }
+            
+            const message = {
+                type: 'character_info',
+                name: document.getElementById('charName').value,
+                class: document.getElementById('charClass').value,
+                race: document.getElementById('charRace').value,
+                level: parseInt(document.getElementById('charLevel').value) || 1
+            };
+            
+            ws.send(JSON.stringify(message));
+            addMessage('player', `👤 Отправлена информация о персонаже: ${message.name}`);
+        }
+
+        function startCampaign() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                alert('Сначала подключитесь к серверу!');
+                return;
+            }
+            
+            if (role !== 'host') {
+                alert('Только хост может начать кампанию!');
+                return;
+            }
+            
+            const message = {
+                type: 'start_campaign'
+            };
+            
+            ws.send(JSON.stringify(message));
+            addMessage('system', '🎮 Запрос на начало кампании отправлен...');
+        }
+
+        function sendAction() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                alert('Сначала подключитесь к серверу!');
+                return;
+            }
+            
+            if (campaignStatus !== 'started') {
+                alert('Кампания еще не начата! Дождитесь начала от хоста.');
+                return;
+            }
+            
+            if (!characterName) {
+                alert('Сначала отправьте информацию о персонаже!');
+                return;
+            }
+            
+            const action = document.getElementById('actionText').value.trim();
+            if (!action) {
+                alert('Введите действие!');
+                return;
+            }
+            
+            const message = {
+                type: 'action',
+                action: action
+            };
+            
+            ws.send(JSON.stringify(message));
+            addMessage('player', `⚔️ Действие: ${action}`);
+            document.getElementById('actionText').value = '';
+        }
+
+        function addMessage(type, text) {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+            messageDiv.textContent = `[${new Date().toLocaleTimeString()}] ${text}`;
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+    </script>
+</body>
+</html>

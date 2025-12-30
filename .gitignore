@@ -1,28 +1,11 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-venv/
-env/
-ENV/
-.venv
-*.egg-info/
-dist/
+# Gradle
+.gradle/
 build/
-
-# Database
-*.db
-*.sqlite
-*.sqlite3
-
-# Environment variables
-.env
-.env.local
+!gradle/wrapper/gradle-wrapper.jar
 
 # IDE
 .idea/
+*.iml
 .vscode/
 *.swp
 *.swo
@@ -34,19 +17,18 @@ Thumbs.db
 
 # Logs
 *.log
-logs/
 
-# Node.js (for 5e-srd-api)
-node_modules/
-npm-debug.log*
-.npm
+# Database
+*.db-journal
 
-# Cache
-.cache/
-*.cache
+# Compiled classes
+*.class
 
-# Temporary files
-tmp/
-temp/
-*.tmp
+# Package files
+*.jar
+*.war
+*.ear
 
+# 5e-srd-api (Node.js)
+5e-srd-api/node_modules/
+5e-srd-api/.env
