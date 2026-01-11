@@ -35,7 +35,7 @@ public class CampaignService {
                 dungeonMasterAI.setCurrentGame(existingGame);
                 Map<String, Object> result = new HashMap<>();
                 result.put("session_id", existingGame.getSessionId());
-                result.put("initial_scene", existingGame.getCurrentScene());
+                result.put("current_location", existingGame.getCurrentLocation());
                 result.put("main_quest", existingGame.getMainQuest());
                 return result;
             }
@@ -49,7 +49,6 @@ public class CampaignService {
         
         Map<String, Object> result = new HashMap<>();
         result.put("session_id", newGame.getSessionId());
-        result.put("initial_scene", null); // Сцена будет сгенерирована при начале
         result.put("main_quest", null); // Квест будет сгенерирован при начале
         return result;
     }

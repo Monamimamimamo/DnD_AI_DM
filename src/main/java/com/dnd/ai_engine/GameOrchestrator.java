@@ -2,6 +2,7 @@ package com.dnd.ai_engine;
 
 import com.dnd.game_state.Character;
 import com.dnd.game_rules.*;
+import com.dnd.prompts.DMPrompts;
 import java.util.*;
 
 /**
@@ -73,48 +74,22 @@ public class GameOrchestrator {
                                     Map<String, Object> ruleResult, Character character,
                                     Map<String, Object> gameContext) {
         String currentLocation = (String) gameContext.getOrDefault("current_location", "Неизвестно");
-        String currentScene = (String) gameContext.getOrDefault("current_scene", "");
         String situation = (String) gameContext.getOrDefault("current_situation", "");
         
-        String resultStatus = ruleResult.getOrDefault("result", "").toString();
-        boolean isSuccess = resultStatus.equals("success") || resultStatus.equals("partial_success");
-        
-        String prompt = "Ты — опытный Dungeon Master для D&D 5e. Создай детальное, атмосферное описание действия игрока.\n\n" +
-                       "Персонаж: " + character.getName() + " (" + character.getCharacterClass() + ", " + character.getRace() + ")\n" +
-                       "Действие: \"" + actionText + "\"\n\n" +
-                       "Результат проверки:\n" +
-                       "- Навык: " + ruleResult.getOrDefault("skill", "N/A") + "\n" +
-                       "- Характеристика: " + ruleResult.getOrDefault("ability", "N/A") + "\n" +
-                       "- Сложность (DC): " + ruleResult.getOrDefault("dc", "N/A") + "\n" +
-                       "- Бросок: " + ruleResult.getOrDefault("roll", "N/A") + " + модификаторы = " + 
-                       ruleResult.getOrDefault("total", "N/A") + "\n" +
-                       "- Результат: " + (isSuccess ? "УСПЕХ" : "НЕУДАЧА") + "\n\n" +
-                       "Контекст:\n" +
-                       "- Локация: " + currentLocation + "\n";
-        
-        if (!currentScene.isEmpty()) {
-            prompt += "- Сцена: " + currentScene + "\n";
-        }
-        if (!situation.isEmpty()) {
-            prompt += "- Ситуация: " + situation + "\n";
-        }
-        
-        prompt += "\n" +
-                 "Создай ДЕТАЛЬНОЕ описание (минимум 4-5 предложений) того, что происходит:\n" +
-                 "1. Опиши, как персонаж выполняет действие\n" +
-                 "2. Опиши, что он видит/чувствует/слышит\n" +
-                 "3. Опиши результат действия (успех или неудача)\n" +
-                 "4. Опиши последствия и что происходит дальше\n" +
-                 "5. Если действие связано с перемещением, укажи новую локацию\n\n" +
-                 "Будь конкретным и атмосферным. Используй детали окружения. Отвечай на русском языке.";
+        String prompt = DMPrompts.getActionNarrativePrompt(
+            actionText,
+            character.getName(),
+            character.getCharacterClass().getValue(),
+            character.getRace().getValue(),
+            ruleResult,
+            currentLocation,
+            situation
+        );
         
         List<Map<String, String>> messages = new ArrayList<>();
         messages.add(Map.of("role", "user", "content", prompt));
         
-        String systemPrompt = "Ты — опытный Dungeon Master для D&D 5e. " +
-                             "Создавай детальные, атмосферные описания действий игроков. " +
-                             "Всегда давай полные ответы (минимум 4-5 предложений). " +
-                             "Отвечай на русском языке.";
+        String systemPrompt = DMPrompts.getActionNarrativeSystemPrompt();
         
         return dmClient.generateResponse(messages, systemPrompt);
     }

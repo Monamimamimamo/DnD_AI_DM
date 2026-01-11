@@ -75,9 +75,11 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                 // Загружаем информацию о кампании
                 Map<String, Object> gameStatus = campaignService.getGameStatus(campaignId);
                 
-                // Проверяем статус кампании (если есть сцена - значит начата)
-                String currentScene = (String) gameStatus.get("current_scene");
-                boolean isStarted = currentScene != null && !currentScene.isEmpty();
+                // Проверяем статус кампании (если есть локация или ситуация - значит начата)
+                String currentLocation = (String) gameStatus.get("current_location");
+                String currentSituation = (String) gameStatus.get("current_situation");
+                boolean isStarted = (currentLocation != null && !currentLocation.isEmpty() && !currentLocation.equals("Неизвестная локация"))
+                                 || (currentSituation != null && !currentSituation.isEmpty());
                 
                 // Если кампания начата, первый участник из списка становится хостом
                 // Иначе первый подключившийся становится хостом
@@ -97,7 +99,6 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                 welcomeMessage.put("campaign_id", campaignId);
                 welcomeMessage.put("role", "host");
                 welcomeMessage.put("status", campaignSession.getStatus().toString().toLowerCase());
-                welcomeMessage.put("current_scene", currentScene);
                 welcomeMessage.put("current_location", gameStatus.get("current_location"));
                 welcomeMessage.put("main_quest", gameStatus.get("quest"));
                 welcomeMessage.put("world", gameStatus.get("world")); // Добавляем информацию о мире
@@ -148,7 +149,6 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                 
                 // Загружаем информацию о кампании для отправки ключевых сообщений
                 Map<String, Object> gameStatus = campaignService.getGameStatus(campaignId);
-                String currentScene = (String) gameStatus.get("current_scene");
                 String currentLocation = (String) gameStatus.get("current_location");
                 Object mainQuest = gameStatus.get("quest");
                 
@@ -177,9 +177,6 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                 }
                 
                 // Добавляем ключевую информацию о кампании
-                if (currentScene != null && !currentScene.isEmpty()) {
-                    welcomeMessage.put("current_scene", currentScene);
-                }
                 if (currentLocation != null && !currentLocation.isEmpty()) {
                     welcomeMessage.put("current_location", currentLocation);
                 }
@@ -397,22 +394,56 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
             msg -> progressMessages.add(msg)
         );
         
-        // Генерируем начальную ситуацию для первого персонажа
-        String firstCharacterName = characters.get(0).getName();
-        String initialSituation = campaignService.generateSituation(
-            campaignId,
-            firstCharacterName,
-            msg -> progressMessages.add(msg)
-        );
+        // Начальная ситуация уже включена в результат startCampaign
+        String initialSituation = (String) campaign.get("initial_situation");
         
         // Обновляем статус игры для получения информации о мире (после генерации)
         gameStatus = campaignService.getGameStatus(campaignId);
+        
+        // Отправляем информацию о мире отдельным сообщением для вывода в чат
+        @SuppressWarnings("unchecked")
+        Map<String, Object> world = (Map<String, Object>) gameStatus.get("world");
+        if (world != null) {
+            String worldDescription = (String) world.get("world_description");
+            if (worldDescription != null && !worldDescription.isEmpty()) {
+                Map<String, Object> worldMessage = new HashMap<>();
+                worldMessage.put("type", "world_info");
+                worldMessage.put("message", "🌍 **Мир кампании:**\n\n" + worldDescription);
+                broadcastToCampaign(campaignId, worldMessage, null);
+            }
+        }
+        
+        // Отправляем информацию о квесте отдельным сообщением для вывода в чат
+        @SuppressWarnings("unchecked")
+        Map<String, Object> mainQuest = (Map<String, Object>) campaign.get("main_quest");
+        if (mainQuest != null) {
+            String questTitle = (String) mainQuest.get("title");
+            String questGoal = (String) mainQuest.get("goal");
+            String questDescription = (String) mainQuest.get("description");
+            
+            if (questTitle != null || questGoal != null) {
+                StringBuilder questText = new StringBuilder("📜 **Основной квест:**\n\n");
+                if (questTitle != null && !questTitle.isEmpty()) {
+                    questText.append("**").append(questTitle).append("**\n\n");
+                }
+                if (questGoal != null && !questGoal.isEmpty()) {
+                    questText.append("**Цель:** ").append(questGoal).append("\n\n");
+                }
+                if (questDescription != null && !questDescription.isEmpty()) {
+                    questText.append(questDescription);
+                }
+                
+                Map<String, Object> questMessage = new HashMap<>();
+                questMessage.put("type", "quest_info");
+                questMessage.put("message", questText.toString());
+                broadcastToCampaign(campaignId, questMessage, null);
+            }
+        }
         
         // Отправляем всем игрокам уведомление о начале
         Map<String, Object> campaignStarted = new HashMap<>();
         campaignStarted.put("type", "campaign_started");
         campaignStarted.put("message", "Кампания началась!");
-        campaignStarted.put("initial_scene", campaign.get("initial_scene"));
         campaignStarted.put("main_quest", campaign.get("main_quest"));
         campaignStarted.put("initial_situation", initialSituation);
         campaignStarted.put("current_location", gameStatus.get("current_location"));

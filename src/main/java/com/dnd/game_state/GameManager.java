@@ -117,9 +117,6 @@ public class GameManager {
         if (updates.containsKey("current_location")) {
             currentGame.setCurrentLocation((String) updates.get("current_location"));
         }
-        if (updates.containsKey("current_scene")) {
-            currentGame.setCurrentScene((String) updates.get("current_scene"));
-        }
         if (updates.containsKey("game_mode")) {
             currentGame.setGameMode((String) updates.get("game_mode"));
         }

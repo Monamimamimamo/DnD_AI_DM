@@ -1,5 +1,6 @@
 package com.dnd.game_state;
 
+import com.dnd.messages.GameContext;
 import java.time.LocalDateTime;
 import java.util.*;
 
@@ -9,8 +10,9 @@ import java.util.*;
 public class GameState {
     private List<Character> characters = new ArrayList<>();
     private String currentScene = "";
+    private String currentLocation = "Неизвестная локация";
     private List<GameEvent> gameHistory = new ArrayList<>();
-    private String currentLocation = "";
+    private String currentSituation = "";
     private List<Map<String, Object>> npcs = new ArrayList<>();
     private List<Map<String, Object>> quests = new ArrayList<>();
     private String gameMode = "story"; // "story" или "combat"
@@ -26,6 +28,15 @@ public class GameState {
     private Map<String, Object> world = null;
 
     private List<User> users = new ArrayList<>();
+
+    // Система флагов и состояний для отслеживания событий
+    private Map<String, Object> campaignFlags = new HashMap<>(); // Глобальные флаги кампании
+    private Map<String, Map<String, Object>> locationStates = new HashMap<>(); // Состояния локаций
+    private Map<String, Integer> npcRelationships = new HashMap<>(); // Отношения с NPC (от -5 до +5)
+    private Set<String> discoveredLocations = new HashSet<>(); // Открытые локации
+    private Map<String, Map<String, Object>> sideQuests = new HashMap<>(); // Побочные квесты
+    private Map<String, LocalDateTime> lastEventTimes = new HashMap<>(); // Время последних событий по типам
+    private GameContext gameContext; // Контекст игры для валидации сообщений
 
     public void addCharacter(Character character) {
         characters.add(character);
@@ -107,11 +118,14 @@ public class GameState {
     public String getCurrentScene() { return currentScene; }
     public void setCurrentScene(String currentScene) { this.currentScene = currentScene; }
 
+    public String getCurrentLocation() { return currentLocation; }
+    public void setCurrentLocation(String currentLocation) { this.currentLocation = currentLocation; }
+
     public List<GameEvent> getGameHistory() { return gameHistory; }
     public void setGameHistory(List<GameEvent> gameHistory) { this.gameHistory = gameHistory; }
 
-    public String getCurrentLocation() { return currentLocation; }
-    public void setCurrentLocation(String currentLocation) { this.currentLocation = currentLocation; }
+    public String getCurrentSituation() { return currentSituation; }
+    public void setCurrentSituation(String currentSituation) { this.currentSituation = currentSituation; }
 
     public String getGameMode() { return gameMode; }
     public void setGameMode(String gameMode) { this.gameMode = gameMode; }
@@ -167,6 +181,96 @@ public class GameState {
     public List<User> getUsers() {
         // Возвращаем список пользователей, участвующих в игре
         return users;
+    }
+    
+    // Методы для работы с флагами кампании
+    public void setCampaignFlag(String flag, Object value) {
+        campaignFlags.put(flag, value);
+    }
+    
+    public Object getCampaignFlag(String flag) {
+        return campaignFlags.get(flag);
+    }
+    
+    public boolean hasCampaignFlag(String flag) {
+        return campaignFlags.containsKey(flag);
+    }
+    
+    public Map<String, Object> getCampaignFlags() {
+        return campaignFlags;
+    }
+    
+    // Методы для работы с состояниями локаций
+    public void setLocationState(String location, String stateKey, Object value) {
+        locationStates.computeIfAbsent(location, k -> new HashMap<>()).put(stateKey, value);
+    }
+    
+    public Object getLocationState(String location, String stateKey) {
+        Map<String, Object> state = locationStates.get(location);
+        return state != null ? state.get(stateKey) : null;
+    }
+    
+    public Map<String, Object> getLocationState(String location) {
+        return locationStates.getOrDefault(location, new HashMap<>());
+    }
+    
+    // Методы для работы с отношениями NPC
+    public void setNPCRelationship(String npcName, int relationship) {
+        // Ограничиваем значения от -5 до +5
+        npcRelationships.put(npcName, Math.max(-5, Math.min(5, relationship)));
+    }
+    
+    public int getNPCRelationship(String npcName) {
+        return npcRelationships.getOrDefault(npcName, 0);
+    }
+    
+    public void modifyNPCRelationship(String npcName, int delta) {
+        int current = getNPCRelationship(npcName);
+        setNPCRelationship(npcName, current + delta);
+    }
+    
+    // Методы для работы с открытыми локациями
+    public void addDiscoveredLocation(String location) {
+        discoveredLocations.add(location);
+    }
+    
+    public boolean isLocationDiscovered(String location) {
+        return discoveredLocations.contains(location);
+    }
+    
+    public Set<String> getDiscoveredLocations() {
+        return discoveredLocations;
+    }
+    
+    // Методы для работы с побочными квестами
+    public void addSideQuest(String questId, Map<String, Object> quest) {
+        sideQuests.put(questId, quest);
+    }
+    
+    public Map<String, Object> getSideQuest(String questId) {
+        return sideQuests.get(questId);
+    }
+    
+    public Map<String, Map<String, Object>> getSideQuests() {
+        return sideQuests;
+    }
+    
+    // Методы для отслеживания времени событий
+    public void setLastEventTime(String eventType, LocalDateTime time) {
+        lastEventTimes.put(eventType, time);
+    }
+    
+    public LocalDateTime getLastEventTime(String eventType) {
+        return lastEventTimes.get(eventType);
+    }
+    
+    // Методы для работы с GameContext
+    public GameContext getGameContext() {
+        return gameContext;
+    }
+    
+    public void setGameContext(GameContext gameContext) {
+        this.gameContext = gameContext;
     }
 
     public static class GameEvent {

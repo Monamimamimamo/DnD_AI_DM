@@ -27,12 +27,11 @@ public class LocalLLMClient {
     public LocalLLMClient(LocalLLMConfig config, String ollamaBaseUrl) {
         this.config = config;
         this.ollamaBaseUrl = ollamaBaseUrl != null ? ollamaBaseUrl : DEFAULT_OLLAMA_BASE_URL;
-        // Увеличиваем таймауты для работы с LLM (генерация может занимать время)
         this.httpClient = new OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS) // Генерация текста может занимать несколько минут
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
-            .callTimeout(90, TimeUnit.SECONDS) // Общий таймаут для всего запроса
+            .callTimeout(600, TimeUnit.SECONDS) 
             .build();
         initializeModel();
     }
@@ -136,10 +135,14 @@ public class LocalLLMClient {
                     throw new RuntimeException("Ошибка HTTP запроса к Ollama: " + response.code() + " " + response.message() + ". Тело: " + errorBody);
                 }
             }
+        } catch (java.net.SocketTimeoutException e) {
+            System.err.println("⏱️ Таймаут при генерации ответа: " + e.getMessage());
+            throw new RuntimeException("Таймаут при генерации ответа от Ollama. Попробуйте увеличить таймауты или использовать более быструю модель.", e);
         } catch (IOException e) {
-            System.err.println("Ошибка при генерации ответа: " + e.getMessage());
+            System.err.println("❌ Ошибка при генерации ответа: " + e.getMessage());
+            e.printStackTrace();
+            throw new RuntimeException("Ошибка при генерации ответа от Ollama: " + e.getMessage(), e);
         }
-        return "Извините, произошла ошибка при генерации ответа.";
     }
 
     private JsonObject parseJsonLenient(String json) {
