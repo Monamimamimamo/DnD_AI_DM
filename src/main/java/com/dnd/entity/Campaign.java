@@ -6,6 +6,7 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import com.dnd.entity.PlayerMessage;
 
 @EntityListeners(AuditingEntityListener.class)
 @Entity
@@ -48,6 +49,9 @@ public class Campaign {
     
     @OneToMany(mappedBy = "campaign", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<GameEvent> gameEvents = new ArrayList<>();
+    
+    @OneToMany(mappedBy = "campaign", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<PlayerMessage> playerMessages = new ArrayList<>();
     
     @OneToMany(mappedBy = "campaign", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Location> locations = new ArrayList<>();
@@ -286,6 +290,14 @@ public class Campaign {
     
     public void setLastEventTimes(List<LastEventTime> lastEventTimes) {
         this.lastEventTimes = lastEventTimes;
+    }
+    
+    public List<PlayerMessage> getPlayerMessages() {
+        return playerMessages;
+    }
+    
+    public void setPlayerMessages(List<PlayerMessage> playerMessages) {
+        this.playerMessages = playerMessages;
     }
 }
 

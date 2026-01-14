@@ -3,6 +3,7 @@ package com.dnd.api;
 import com.dnd.game_state.Character;
 import com.dnd.game_state.GameState;
 import com.dnd.identity.IdentityService;
+import com.dnd.service.MessageService;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
@@ -35,6 +36,9 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
     
     @Autowired
     private IdentityService identityService;
+    
+    @Autowired(required = false)
+    private MessageService messageService;
     
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
@@ -121,6 +125,21 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                 
                 sendMessage(session, welcomeMessage);
                 
+                // Загружаем и отправляем историю сообщений
+                if (messageService != null) {
+                    try {
+                        List<Map<String, Object>> messageHistory = messageService.getMessageHistory(campaignId);
+                        if (!messageHistory.isEmpty()) {
+                            Map<String, Object> historyMessage = new HashMap<>();
+                            historyMessage.put("type", "message_history");
+                            historyMessage.put("messages", messageHistory);
+                            sendMessage(session, historyMessage);
+                        }
+                    } catch (Exception e) {
+                        System.err.println("Ошибка загрузки истории сообщений: " + e.getMessage());
+                    }
+                }
+                
                 if (isStarted) {
                     // Если кампания уже начата, отправляем текущую ситуацию
                     if (characters != null && !characters.isEmpty()) {
@@ -203,6 +222,21 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                 }
                 
                 sendMessage(session, welcomeMessage);
+                
+                // Загружаем и отправляем историю сообщений
+                if (messageService != null) {
+                    try {
+                        List<Map<String, Object>> messageHistory = messageService.getMessageHistory(campaignId);
+                        if (!messageHistory.isEmpty()) {
+                            Map<String, Object> historyMessage = new HashMap<>();
+                            historyMessage.put("type", "message_history");
+                            historyMessage.put("messages", messageHistory);
+                            sendMessage(session, historyMessage);
+                        }
+                    } catch (Exception e) {
+                        System.err.println("Ошибка загрузки истории сообщений: " + e.getMessage());
+                    }
+                }
                 
                 // Если кампания начата, отправляем текущую ситуацию
                 if (campaignSession.getStatus() == CampaignSession.CampaignStatus.STARTED) {
@@ -403,49 +437,59 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
         // Отправляем информацию о мире отдельным сообщением для вывода в чат
         @SuppressWarnings("unchecked")
         Map<String, Object> world = (Map<String, Object>) gameStatus.get("world");
-        if (world != null) {
+        if (world != null && !world.isEmpty()) {
             String worldDescription = (String) world.get("world_description");
-            if (worldDescription != null && !worldDescription.isEmpty()) {
+            if (worldDescription != null && !worldDescription.trim().isEmpty()) {
                 Map<String, Object> worldMessage = new HashMap<>();
                 worldMessage.put("type", "world_info");
                 worldMessage.put("message", "🌍 **Мир кампании:**\n\n" + worldDescription);
                 broadcastToCampaign(campaignId, worldMessage, null);
+            } else {
+                // Если world_description нет, но есть другие данные мира, попробуем найти описание
+                System.err.println("⚠️ Описание мира отсутствует или пустое. Структура мира: " + world.keySet());
             }
+        } else {
+            System.err.println("⚠️ Мир не найден в gameStatus при начале кампании");
         }
         
-        // Отправляем информацию о квесте отдельным сообщением для вывода в чат
+        // Формируем начальную ситуацию с квестом как заключением
         @SuppressWarnings("unchecked")
         Map<String, Object> mainQuest = (Map<String, Object>) campaign.get("main_quest");
+        String situationWithQuest = initialSituation;
+        
+        // Добавляем квест как заключение, если есть quest_summary
         if (mainQuest != null) {
-            String questTitle = (String) mainQuest.get("title");
-            String questGoal = (String) mainQuest.get("goal");
-            String questDescription = (String) mainQuest.get("description");
-            
-            if (questTitle != null || questGoal != null) {
-                StringBuilder questText = new StringBuilder("📜 **Основной квест:**\n\n");
-                if (questTitle != null && !questTitle.isEmpty()) {
-                    questText.append("**").append(questTitle).append("**\n\n");
+            String questSummary = (String) mainQuest.get("quest_summary");
+            if (questSummary != null && !questSummary.trim().isEmpty()) {
+                // Проверяем, не включен ли уже квест в ситуацию (LLM мог включить его сам)
+                if (!initialSituation.contains(questSummary) && !initialSituation.contains("📜")) {
+                    // Добавляем квест как заключение с визуальным разделением
+                    situationWithQuest = initialSituation + "\n\n📜 " + questSummary;
+                } else {
+                    // Квест уже включен в ситуацию, используем как есть
+                    situationWithQuest = initialSituation;
                 }
-                if (questGoal != null && !questGoal.isEmpty()) {
-                    questText.append("**Цель:** ").append(questGoal).append("\n\n");
-                }
-                if (questDescription != null && !questDescription.isEmpty()) {
-                    questText.append(questDescription);
-                }
-                
-                Map<String, Object> questMessage = new HashMap<>();
-                questMessage.put("type", "quest_info");
-                questMessage.put("message", questText.toString());
-                broadcastToCampaign(campaignId, questMessage, null);
+            } else {
+                System.err.println("⚠️ quest_summary отсутствует в квесте. Доступные поля: " + mainQuest.keySet());
             }
+        } else {
+            System.err.println("⚠️ main_quest отсутствует в campaign");
         }
         
-        // Отправляем всем игрокам уведомление о начале
+        // Отправляем начальную ситуацию с квестом как отдельное сообщение в чат
+        Map<String, Object> situationMessage = new HashMap<>();
+        situationMessage.put("type", "situation");
+        situationMessage.put("situation", situationWithQuest); // Используем "situation" для совместимости с фронтендом
+        situationMessage.put("message", situationWithQuest); // Также добавляем "message" для других обработчиков
+        situationMessage.put("current_location", gameStatus.get("current_location"));
+        broadcastToCampaign(campaignId, situationMessage, null);
+        
+        // Отправляем всем игрокам уведомление о начале (БЕЗ дублирования ситуации)
         Map<String, Object> campaignStarted = new HashMap<>();
         campaignStarted.put("type", "campaign_started");
         campaignStarted.put("message", "Кампания началась!");
         campaignStarted.put("main_quest", campaign.get("main_quest"));
-        campaignStarted.put("initial_situation", initialSituation);
+        // НЕ отправляем initial_situation здесь, так как она уже отправлена отдельным сообщением "situation"
         campaignStarted.put("current_location", gameStatus.get("current_location"));
         campaignStarted.put("world", gameStatus.get("world")); // Добавляем информацию о мире
         campaignStarted.put("progress", progressMessages);

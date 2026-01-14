@@ -12,7 +12,6 @@ public class GeneratedEvent {
     private Map<String, Object> metadata; // Дополнительные данные (NPC, квест, локация и т.д.)
     private Map<String, Object> connections; // Связи с историей
     private int priority;
-    private boolean integrated;!!! // Интегрировано ли в GameState
     
     public GeneratedEvent(EventType type, String title, String description,
                          Map<String, Object> metadata, Map<String, Object> connections,
@@ -23,7 +22,6 @@ public class GeneratedEvent {
         this.metadata = metadata;
         this.connections = connections;
         this.priority = priority;
-        this.integrated = false;
     }
     
     // Getters and Setters
@@ -33,8 +31,6 @@ public class GeneratedEvent {
     public Map<String, Object> getMetadata() { return metadata; }
     public Map<String, Object> getConnections() { return connections; }
     public int getPriority() { return priority; }
-    public boolean isIntegrated() { return integrated; }
-    public void setIntegrated(boolean integrated) { this.integrated = integrated; }
 }
 
 

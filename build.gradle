@@ -32,9 +32,6 @@ dependencies {
     // PostgreSQL для хранения данных
     implementation 'org.postgresql:postgresql:42.7.1'
     
-    // SQLite для хранения состояния игры (оставляем для обратной совместимости, но не используем)
-    // implementation 'org.xerial:sqlite-jdbc:3.44.1.0'
-    
     // JWT для аутентификации
     implementation 'io.jsonwebtoken:jjwt-api:0.12.3'
     implementation 'io.jsonwebtoken:jjwt-impl:0.12.3'

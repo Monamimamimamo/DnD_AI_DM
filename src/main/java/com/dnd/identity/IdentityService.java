@@ -2,7 +2,9 @@ package com.dnd.identity;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
+import java.util.Optional;
 
 /**
  * Сервис для управления пользователями и аутентификацией
@@ -16,14 +18,15 @@ public class IdentityService {
     /**
      * Регистрация нового пользователя
      */
+    @Transactional
     public User register(String username, String email, String password) {
         // Проверяем, что пользователь с таким username не существует
-        if (userRepository.findByUsername(username) != null) {
+        if (userRepository.findByUsername(username).isPresent()) {
             throw new IllegalArgumentException("Пользователь с таким именем уже существует");
         }
         
         // Проверяем, что пользователь с таким email не существует
-        if (userRepository.findByEmail(email) != null) {
+        if (userRepository.findByEmail(email).isPresent()) {
             throw new IllegalArgumentException("Пользователь с таким email уже существует");
         }
         
@@ -42,7 +45,8 @@ public class IdentityService {
         String passwordHash = PasswordUtil.hashPassword(password);
         
         // Создаем пользователя
-        User user = userRepository.createUser(username, email, passwordHash);
+        User user = new User(username, email, passwordHash);
+        user = userRepository.save(user);
         
         return user;
     }
@@ -50,12 +54,10 @@ public class IdentityService {
     /**
      * Аутентификация пользователя
      */
+    @Transactional
     public String authenticate(String username, String password) {
-        User user = userRepository.findByUsername(username);
-        
-        if (user == null) {
-            throw new IllegalArgumentException("Неверное имя пользователя или пароль");
-        }
+        User user = userRepository.findByUsername(username)
+            .orElseThrow(() -> new IllegalArgumentException("Неверное имя пользователя или пароль"));
         
         if (!PasswordUtil.checkPassword(password, user.getPasswordHash())) {
             throw new IllegalArgumentException("Неверное имя пользователя или пароль");
@@ -63,7 +65,7 @@ public class IdentityService {
         
         // Обновляем время последнего входа
         user.setLastLoginAt(LocalDateTime.now());
-        userRepository.updateUser(user);
+        userRepository.save(user);
         
         // Генерируем JWT токен
         return JwtUtil.generateToken(user.getId(), user.getUsername());
@@ -73,14 +75,16 @@ public class IdentityService {
      * Получить пользователя по ID
      */
     public User getUserById(String userId) {
-        return userRepository.findById(userId);
+        return userRepository.findById(userId)
+            .orElse(null);
     }
     
     /**
      * Получить пользователя по username
      */
     public User getUserByUsername(String username) {
-        return userRepository.findByUsername(username);
+        return userRepository.findByUsername(username)
+            .orElse(null);
     }
     
     /**
@@ -92,39 +96,32 @@ public class IdentityService {
         }
         
         String userId = JwtUtil.extractUserId(token);
-        User user = userRepository.findById(userId);
-        
-        if (user == null) {
-            throw new IllegalArgumentException("Пользователь не найден");
-        }
-        
-        return user;
+        return userRepository.findById(userId)
+            .orElseThrow(() -> new IllegalArgumentException("Пользователь не найден"));
     }
     
     /**
      * Добавить персонажа к пользователю
      */
+    @Transactional
     public void addCharacterToUser(String userId, String characterId) {
-        User user = userRepository.findById(userId);
-        if (user == null) {
-            throw new IllegalArgumentException("Пользователь не найден");
-        }
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new IllegalArgumentException("Пользователь не найден"));
         
         user.addCharacterId(characterId);
-        userRepository.updateUser(user);
+        userRepository.save(user);
     }
     
     /**
      * Добавить кампанию к пользователю
      */
+    @Transactional
     public void addCampaignToUser(String userId, String campaignId) {
-        User user = userRepository.findById(userId);
-        if (user == null) {
-            throw new IllegalArgumentException("Пользователь не найден");
-        }
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new IllegalArgumentException("Пользователь не найден"));
         
         user.addCampaignId(campaignId);
-        userRepository.updateUser(user);
+        userRepository.save(user);
     }
 }
 

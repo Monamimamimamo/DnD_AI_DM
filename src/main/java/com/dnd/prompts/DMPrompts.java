@@ -62,7 +62,15 @@ public class DMPrompts {
      */
     public static String getSituationPrompt(String previousSituation, String characterName, 
                                            String currentLocation, Map<String, Object> questInfo) {
-        return SituationPrompts.getSituationPrompt(previousSituation, characterName, currentLocation, questInfo);
+        return SituationPrompts.getSituationPrompt(previousSituation, characterName, currentLocation, questInfo, null);
+    }
+    
+    /**
+     * Промпт для генерации ситуации с релевантным контекстом
+     */
+    public static String getSituationPrompt(String previousSituation, String characterName, 
+                                           String currentLocation, Map<String, Object> questInfo, String relevantContext) {
+        return SituationPrompts.getSituationPrompt(previousSituation, characterName, currentLocation, questInfo, relevantContext);
     }
     
     // ========== Промпты для генерации событий ==========

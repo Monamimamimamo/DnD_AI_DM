@@ -1,80 +1,27 @@
 package com.dnd.game_state;
 
-import java.sql.*;
+import com.dnd.service.GameStateService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
+
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 
 /**
- * Менеджер для управления состоянием игры
+ * Менеджер для управления состоянием игры (работает через JPA/PostgreSQL)
  */
+@Component
 public class GameManager {
-    private static final Gson gson = new GsonBuilder()
-        .registerTypeAdapter(LocalDateTime.class, new LocalDateTimeAdapter())
-        .create();
-    private final String dbPath;
     private GameState currentGame;
+    
+    @Autowired
+    private GameStateService gameStateService;
 
     public GameManager() {
-        this(getDbPathFromEnv());
-    }
-
-    public GameManager(String dbPath) {
-        this.dbPath = dbPath;
-        initDatabase();
-    }
-    
-    private static String getDbPathFromEnv() {
-        String dbPath = System.getenv("GAME_DB_PATH");
-        if (dbPath == null || dbPath.isEmpty()) {
-            dbPath = System.getProperty("game.db.path");
-        }
-        if (dbPath == null || dbPath.isEmpty()) {
-            // По умолчанию используем /app/data в Docker или текущую директорию локально
-            String dataDir = System.getenv("GAME_DATA_DIR");
-            if (dataDir == null || dataDir.isEmpty()) {
-                dataDir = System.getProperty("game.data.dir", ".");
-            }
-            dbPath = dataDir + "/game_data.db";
-        }
-        return dbPath;
-    }
-
-    private void initDatabase() {
-        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath)) {
-            // Таблица для сохранения игр
-            conn.createStatement().execute("""
-                CREATE TABLE IF NOT EXISTS games (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    session_id TEXT UNIQUE,
-                    created_at TIMESTAMP,
-                    game_data TEXT
-                )
-            """);
-            
-            // Таблица для персонажей
-            conn.createStatement().execute("""
-                CREATE TABLE IF NOT EXISTS characters (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    session_id TEXT,
-                    character_data TEXT,
-                    FOREIGN KEY (session_id) REFERENCES games (session_id)
-                )
-            """);
-        } catch (SQLException e) {
-            System.err.println("Ошибка инициализации БД: " + e.getMessage());
-        }
     }
 
     public GameState startNewGame(String sessionId) {
-        if (sessionId == null) {
-            sessionId = "game_" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
-        }
-        
-        currentGame = new GameState();
-        currentGame.setSessionId(sessionId);
+        currentGame = gameStateService.createNewGame(sessionId);
         return currentGame;
     }
 
@@ -126,20 +73,7 @@ public class GameManager {
 
     public void saveGame() {
         if (currentGame == null) return;
-        
-        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath)) {
-            String gameData = gson.toJson(currentGame);
-            
-            try (PreparedStatement stmt = conn.prepareStatement(
-                "INSERT OR REPLACE INTO games (session_id, created_at, game_data) VALUES (?, ?, ?)")) {
-                stmt.setString(1, currentGame.getSessionId());
-                stmt.setString(2, currentGame.getCreatedAt().toString());
-                stmt.setString(3, gameData);
-                stmt.executeUpdate();
-            }
-        } catch (SQLException e) {
-            System.err.println("Ошибка сохранения игры: " + e.getMessage());
-        }
+        gameStateService.saveGameState(currentGame);
     }
 
     public GameState getCurrentGame() {
@@ -158,23 +92,8 @@ public class GameManager {
             return null;
         }
         
-        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath)) {
-            try (PreparedStatement stmt = conn.prepareStatement(
-                "SELECT game_data FROM games WHERE session_id = ?")) {
-                stmt.setString(1, sessionId);
-                ResultSet rs = stmt.executeQuery();
-                
-                if (rs.next()) {
-                    String gameData = rs.getString("game_data");
-                    currentGame = gson.fromJson(gameData, GameState.class);
-                    return currentGame;
-                }
-            }
-        } catch (SQLException e) {
-            System.err.println("Ошибка загрузки игры: " + e.getMessage());
-        }
-        
-        return null;
+        currentGame = gameStateService.loadGameState(sessionId);
+        return currentGame;
     }
     
     /**
@@ -184,19 +103,7 @@ public class GameManager {
         if (sessionId == null) {
             return false;
         }
-        
-        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath)) {
-            try (PreparedStatement stmt = conn.prepareStatement(
-                "SELECT 1 FROM games WHERE session_id = ?")) {
-                stmt.setString(1, sessionId);
-                ResultSet rs = stmt.executeQuery();
-                return rs.next();
-            }
-        } catch (SQLException e) {
-            System.err.println("Ошибка проверки игры: " + e.getMessage());
-        }
-        
-        return false;
+        return gameStateService.gameExists(sessionId);
     }
 
     public List<Character> getCharacters() {

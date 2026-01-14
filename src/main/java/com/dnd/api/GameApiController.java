@@ -305,6 +305,40 @@ public class GameApiController {
         }
     }
     
+    /**
+     * GET /api/campaigns/{campaignId}/full - Получить полную информацию о кампании
+     * Возвращает все поля: квесты, NPC, локации, события, флаги и т.д.
+     */
+    @Operation(summary = "Получить полную информацию о кампании", 
+               description = "Возвращает всю информацию о кампании: квесты, NPC, локации, события, флаги, персонажи и все остальные поля")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Информация о кампании успешно получена"),
+        @ApiResponse(responseCode = "404", description = "Кампания не найдена"),
+        @ApiResponse(responseCode = "500", description = "Ошибка получения информации")
+    })
+    @GetMapping("/campaigns/{campaignId}/full")
+    public ResponseEntity<Map<String, Object>> getFullCampaignInfo(@PathVariable String campaignId) {
+        try {
+            Map<String, Object> fullInfo = campaignService.getFullCampaignInfo(campaignId);
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.putAll(fullInfo);
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("success", false);
+            error.put("error", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
+        } catch (Exception e) {
+            System.err.println("❌ Ошибка получения полной информации о кампании: " + e.getMessage());
+            e.printStackTrace();
+            Map<String, Object> error = new HashMap<>();
+            error.put("success", false);
+            error.put("error", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+        }
+    }
+    
     private Character parseCharacterFromJson(Map<String, Object> json) {
         String name = (String) json.get("name");
         String className = (String) json.getOrDefault("class", "FIGHTER");

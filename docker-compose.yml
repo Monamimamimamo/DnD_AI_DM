@@ -1,4 +1,23 @@
 services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: dnd-postgres
+    environment:
+      POSTGRES_DB: dnd_ai_dm
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - dnd-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   5e-db:
     image: ghcr.io/5e-bits/5e-database:latest
     # build: ../5e-database
@@ -17,15 +36,15 @@ services:
   5e-api:
     environment:
       MONGODB_URI: mongodb://5e-db/5e-database
-      REDIS_URL: redis://cache:6379
-      OLLAMA_BASE_URL: http://ollama:11434
-    build: .
+      REDIS_URL: redis://5e-cache:6379
+    build:
+      context: ./5e-srd-api
+      dockerfile: Dockerfile
     ports:
       - '3000:3000'
     depends_on:
       - 5e-db
       - 5e-cache
-      - ollama
     networks:
       - dnd-network
 
@@ -61,17 +80,24 @@ services:
     environment:
       SERVER_PORT: 8080
       OLLAMA_BASE_URL: http://ollama:11434
-      SRD_API_URL: http://srd-api:3000
+      SRD_API_URL: http://5e-api:3000
       GAME_DATA_DIR: /app/data
       GAME_DB_PATH: /app/data/game_data.db
-      IDENTITY_DB_PATH: /app/data/identity.db
       JWT_SECRET: dnd-ai-dungeon-master-secret-key-change-in-production-very-long-secret-key-min-256-bits
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/dnd_ai_dm
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
     ports:
       - '8080:8080'
     depends_on:
-      - 5e-db
-      - 5e-cache
-      - ollama
+      postgres:
+        condition: service_healthy
+      5e-db:
+        condition: service_started
+      5e-cache:
+        condition: service_started
+      ollama:
+        condition: service_healthy
     networks:
       - dnd-network
     volumes:
@@ -92,3 +118,4 @@ volumes:
   redis-data:
   ollama-data:
   game-data:
+  postgres-data:

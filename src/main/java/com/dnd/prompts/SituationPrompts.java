@@ -11,6 +11,14 @@ public class SituationPrompts {
      * Промпт для генерации ситуации, требующей действия
      */
     public static String getSituationPrompt(String previousSituation, String characterName, String currentLocation, Map<String, Object> questInfo) {
+        return getSituationPrompt(previousSituation, characterName, currentLocation, questInfo, null);
+    }
+    
+    /**
+     * Промпт для генерации ситуации с релевантным контекстом
+     */
+    public static String getSituationPrompt(String previousSituation, String characterName, String currentLocation, 
+                                           Map<String, Object> questInfo, String relevantContext) {
         StringBuilder questContext = new StringBuilder();
         if (questInfo != null) {
             String currentStage = (String) questInfo.getOrDefault("current_stage", "");
@@ -23,6 +31,18 @@ public class SituationPrompts {
             
             Ситуация должна быть связана с текущим этапом квеста и продвигать сюжет к цели.
             """, goal, currentStage));
+        }
+        
+        // Добавляем релевантный контекст, если он есть
+        String contextSection = "";
+        if (relevantContext != null && !relevantContext.isEmpty()) {
+            contextSection = String.format("""
+            
+            === РЕЛЕВАНТНЫЙ КОНТЕКСТ КВЕСТА ===
+            %s
+            
+            ВАЖНО: Используй эту информацию при создании ситуации. Ситуация должна логически вытекать из событий квеста и учитывать связанных NPC, локации и предметы.
+            """, relevantContext);
         }
         
         String locationContext = currentLocation != null && !currentLocation.isEmpty() 
@@ -77,7 +97,8 @@ public class SituationPrompts {
             - content - это детальное описание ситуации
             - location - название локации
             - metadata - дополнительные данные (может быть пустым объектом)
-            """, situationContext, characterName, locationContext, questContext);
+            %s
+            """, situationContext, characterName, locationContext, questContext, contextSection);
     }
 }
 

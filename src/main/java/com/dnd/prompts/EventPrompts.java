@@ -57,7 +57,10 @@ public class EventPrompts {
                 "content": "Описание события",
                 "metadata": {
                     "event_type": "%s",
-                    "connection_to_history": "Как событие связано с историей"
+                    "connection_to_history": "Как событие связано с историей",
+                    "related_npcs": ["Имя NPC1", "Имя NPC2"],
+                    "related_quests": ["Название квеста1", "Название квеста2"],
+                    "related_locations": ["Название локации1", "Название локации2"]
                 }
             }
             
@@ -65,6 +68,10 @@ public class EventPrompts {
             - message_type должен быть "random_event"
             - content - детальное описание события
             - metadata.event_type - тип события из запроса (%s)
+            - metadata.related_npcs - массив имен NPC, связанных с событием (может быть пустым)
+            - metadata.related_quests - массив названий квестов, связанных с событием (может быть пустым)
+            - metadata.related_locations - массив названий локаций, связанных с событием (может быть пустым)
+            - Указывай ТОЛЬКО те NPC, квесты и локации, которые УПОМИНАЮТСЯ в контексте или логически связаны с событием
             """, eventType, 
             connectionText.isEmpty() ? "Нет явных связей с историей, но событие должно логически вытекать из текущей ситуации." : connectionText,
             gameContext,
@@ -148,7 +155,10 @@ public class EventPrompts {
                     "npc_name": "Имя NPC (если упоминается)",
                     "npc_type": "Тип NPC (торговец, маг, стражник и т.д.)",
                     "offers": "Что предлагает NPC",
-                    "can_start_dialogue": true
+                    "can_start_dialogue": true,
+                    "related_npcs": ["Имя NPC1", "Имя NPC2"],
+                    "related_quests": ["Название квеста1", "Название квеста2"],
+                    "related_locations": ["Название локации1", "Название локации2"]
                 }
             }
             
@@ -157,6 +167,10 @@ public class EventPrompts {
             - content - детальное описание встречи
             - metadata.npc_name - имя NPC (если есть)
             - metadata.can_start_dialogue - может ли начаться диалог
+            - metadata.related_npcs - массив имен NPC, связанных с событием (включая самого NPC из npc_name, если он упоминался ранее)
+            - metadata.related_quests - массив названий квестов, связанных с событием (может быть пустым)
+            - metadata.related_locations - массив названий локаций, связанных с событием (включая текущую локацию, если она упоминается)
+            - Указывай ТОЛЬКО те NPC, квесты и локации, которые УПОМИНАЮТСЯ в контексте или логически связаны с событием
             """, 
             connectionText.isEmpty() ? "NPC может быть новым персонажем, но должен логически вписываться в локацию и ситуацию." : connectionText,
             gameContext,
@@ -234,7 +248,10 @@ public class EventPrompts {
                 "metadata": {
                     "quest_type": "Тип квеста (поиск, расследование, защита, устранение угрозы)",
                     "quest_giver": "Кто дает квест (если есть)",
-                    "quest_goal": "Цель квеста"
+                    "quest_goal": "Цель квеста",
+                    "related_npcs": ["Имя NPC1", "Имя NPC2"],
+                    "related_quests": ["Название квеста1", "Название квеста2"],
+                    "related_locations": ["Название локации1", "Название локации2"]
                 }
             }
             
@@ -243,6 +260,10 @@ public class EventPrompts {
             - content - детальное описание начала квеста
             - metadata.quest_type - тип квеста
             - metadata.quest_goal - цель квеста
+            - metadata.related_npcs - массив имен NPC, связанных с квестом (включая quest_giver, если он упоминался ранее)
+            - metadata.related_quests - массив названий квестов, связанных с событием (может быть пустым)
+            - metadata.related_locations - массив названий локаций, связанных с квестом (может быть пустым)
+            - Указывай ТОЛЬКО те NPC, квесты и локации, которые УПОМИНАЮТСЯ в контексте или логически связаны с квестом
             """, 
             connectionText.isEmpty() ? "Квест должен логически вытекать из текущей ситуации или истории." : connectionText,
             gameContext,

@@ -1,8 +1,12 @@
 package com.dnd.events;
 
 import com.dnd.ai_engine.LocalLLMClient;
-import com.dnd.game_state.GameState;
+import com.dnd.messages.RelevantContextBuilder;
 import com.dnd.prompts.DMPrompts;
+import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import java.util.*;
 
 /**
@@ -13,10 +17,16 @@ public class EventGenerator {
     private final HistoryAnalyzer historyAnalyzer;
     private final ConnectionGenerator connectionGenerator;
     
+    private RelevantContextBuilder relevantContextBuilder;
+    
     public EventGenerator(LocalLLMClient llmClient) {
         this.llmClient = llmClient;
         this.historyAnalyzer = new HistoryAnalyzer();
         this.connectionGenerator = new ConnectionGenerator();
+    }
+    
+    public void setRelevantContextBuilder(RelevantContextBuilder relevantContextBuilder) {
+        this.relevantContextBuilder = relevantContextBuilder;
     }
     
     /**
@@ -53,19 +63,30 @@ public class EventGenerator {
         Map<String, Object> connections = connectionGenerator.generateConnectionsFromHistory(updatedContext);
         
         // 4. Генерируем событие через LLM с жесткими правилами
-        String generatedEvent = generateEventWithLLM(eventType, connections, updatedContext);
+        EventParseResult parseResult = generateEventWithLLM(eventType, connections, updatedContext);
         
         // 5. Создаем объект GeneratedEvent
         Map<String, Object> metadata = new HashMap<>();
         metadata.put("trigger", trigger);
         metadata.put("history_analysis", historyAnalysis);
         
+        // Добавляем связанные сущности из JSON ответа LLM
+        if (parseResult.relatedNpcs != null) {
+            metadata.put("related_npcs", parseResult.relatedNpcs);
+        }
+        if (parseResult.relatedQuests != null) {
+            metadata.put("related_quests", parseResult.relatedQuests);
+        }
+        if (parseResult.relatedLocations != null) {
+            metadata.put("related_locations", parseResult.relatedLocations);
+        }
+        
         int priority = trigger.getPriority();
         
         return new GeneratedEvent(
             eventType,
-            extractTitle(generatedEvent),
-            generatedEvent,
+            extractTitle(parseResult.content),
+            parseResult.content,
             metadata,
             connections,
             priority
@@ -73,11 +94,29 @@ public class EventGenerator {
     }
     
     /**
-     * Генерирует событие через LLM
+     * Результат парсинга события из LLM
      */
-    private String generateEventWithLLM(EventType eventType,
-                                        Map<String, Object> connections,
-                                        EventContext context) {
+    private static class EventParseResult {
+        String content;
+        List<String> relatedNpcs;
+        List<String> relatedQuests;
+        List<String> relatedLocations;
+        
+        EventParseResult(String content, List<String> relatedNpcs, 
+                        List<String> relatedQuests, List<String> relatedLocations) {
+            this.content = content;
+            this.relatedNpcs = relatedNpcs;
+            this.relatedQuests = relatedQuests;
+            this.relatedLocations = relatedLocations;
+        }
+    }
+    
+    /**
+     * Генерирует событие через LLM и парсит JSON ответ
+     */
+    private EventParseResult generateEventWithLLM(EventType eventType,
+                                                   Map<String, Object> connections,
+                                                   EventContext context) {
         // Создаем промпт для генерации события с жесткими правилами
         String prompt = buildEventPrompt(eventType, connections, context);
         
@@ -91,8 +130,8 @@ public class EventGenerator {
         
         String response = llmClient.generateResponse(messages, systemPrompt);
         
-        // Извлекаем событие из ответа
-        return extractEventFromResponse(response);
+        // Парсим JSON и извлекаем событие и связи
+        return parseEventFromResponse(response);
     }
     
     /**
@@ -124,75 +163,132 @@ public class EventGenerator {
     }
     
     /**
-     * Строит контекст игры для промпта
+     * Строит контекст игры для промпта (использует релевантный контекст)
      */
     private String buildGameContext(EventContext context) {
         StringBuilder gameContext = new StringBuilder();
         
-        gameContext.append("Текущая локация: ").append(context.getCurrentLocation()).append("\n");
-        gameContext.append("Текущая ситуация: ").append(context.getCurrentSituation()).append("\n");
-        
-        if (context.getMainQuest() != null) {
-            String currentStage = context.getGameState().getCurrentQuestStage();
-            gameContext.append("Текущий этап квеста: ").append(currentStage != null ? currentStage : "не определен").append("\n");
-        }
-        
-        // История игры
-        List<GameState.GameEvent> recentHistory = context.getRecentHistory();
-        if (recentHistory != null && !recentHistory.isEmpty()) {
-            gameContext.append("\nПоследние события:\n");
-            int limit = Math.min(5, recentHistory.size());
-            for (int i = recentHistory.size() - limit; i < recentHistory.size(); i++) {
-                GameState.GameEvent event = recentHistory.get(i);
-                gameContext.append("- [").append(event.getType()).append("] ").append(event.getDescription()).append("\n");
-            }
-        }
-        
-        // Упоминания из истории
-        Map<String, Object> historyAnalysis = context.getHistoryAnalysis();
-        if (historyAnalysis != null) {
-            @SuppressWarnings("unchecked")
-            Map<String, List<String>> mentions = (Map<String, List<String>>) historyAnalysis.get("mentions");
-            if (mentions != null && !mentions.isEmpty()) {
-                gameContext.append("\nУпоминания из истории:\n");
-                if (!mentions.get("npcs").isEmpty()) {
-                    gameContext.append("NPC: ").append(String.join(", ", mentions.get("npcs"))).append("\n");
+        // Используем RelevantContextBuilder для получения только релевантной информации
+        if (relevantContextBuilder != null) {
+            try {
+                RelevantContextBuilder.RelevantContext relevantContext = 
+                    relevantContextBuilder.buildRelevantContext(
+                        context.getGameState(),
+                        context.getGameState().getSessionId()
+                    );
+                
+                // Добавляем релевантный контекст
+                String relevantContextText = relevantContext.formatForPrompt();
+                if (!relevantContextText.isEmpty()) {
+                    gameContext.append(relevantContextText);
                 }
-                if (!mentions.get("items").isEmpty()) {
-                    gameContext.append("Предметы: ").append(String.join(", ", mentions.get("items"))).append("\n");
-                }
+            } catch (Exception e) {
+                System.err.println("Ошибка при построении релевантного контекста: " + e.getMessage());
             }
-        }
+        } else return "";
         
         return gameContext.toString();
     }
     
     /**
-     * Извлекает событие из ответа LLM
+     * Парсит событие из JSON ответа LLM и извлекает связанные сущности
      */
-    private String extractEventFromResponse(String response) {
+    private EventParseResult parseEventFromResponse(String response) {
         if (response == null || response.trim().isEmpty()) {
-            return "Произошло неожиданное событие...";
+            return new EventParseResult(
+                "Произошло неожиданное событие...",
+                new ArrayList<>(),
+                new ArrayList<>(),
+                new ArrayList<>()
+            );
         }
         
-        // Пытаемся извлечь JSON если есть
+        // Очищаем от markdown разметки если есть
+        response = response.replaceAll("```json", "").replaceAll("```", "").trim();
+        
+        // Пытаемся извлечь JSON
         int jsonStart = response.indexOf("{");
         int jsonEnd = response.lastIndexOf("}");
         
         if (jsonStart != -1 && jsonEnd > jsonStart) {
             String jsonStr = response.substring(jsonStart, jsonEnd + 1);
             try {
-                // Можно распарсить JSON если нужно
-                // Пока просто возвращаем весь ответ
+                Gson gson = new Gson();
+                JsonObject json = gson.fromJson(jsonStr, JsonObject.class);
+                
+                // Извлекаем content
+                String content = json.has("content") ? 
+                    json.get("content").getAsString() : response;
+                
+                // Извлекаем связанные сущности из metadata
+                List<String> relatedNpcs = new ArrayList<>();
+                List<String> relatedQuests = new ArrayList<>();
+                List<String> relatedLocations = new ArrayList<>();
+                
+                if (json.has("metadata")) {
+                    JsonObject metadata = json.getAsJsonObject("metadata");
+                    
+                    // Извлекаем related_npcs
+                    if (metadata.has("related_npcs")) {
+                        JsonArray npcsArray = metadata.getAsJsonArray("related_npcs");
+                        for (JsonElement element : npcsArray) {
+                            if (element.isJsonPrimitive()) {
+                                String npcName = element.getAsString();
+                                if (npcName != null && !npcName.trim().isEmpty()) {
+                                    relatedNpcs.add(npcName.trim());
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Извлекаем related_quests
+                    if (metadata.has("related_quests")) {
+                        JsonArray questsArray = metadata.getAsJsonArray("related_quests");
+                        for (JsonElement element : questsArray) {
+                            if (element.isJsonPrimitive()) {
+                                String questTitle = element.getAsString();
+                                if (questTitle != null && !questTitle.trim().isEmpty()) {
+                                    relatedQuests.add(questTitle.trim());
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Извлекаем related_locations
+                    if (metadata.has("related_locations")) {
+                        JsonArray locationsArray = metadata.getAsJsonArray("related_locations");
+                        for (JsonElement element : locationsArray) {
+                            if (element.isJsonPrimitive()) {
+                                String locationName = element.getAsString();
+                                if (locationName != null && !locationName.trim().isEmpty()) {
+                                    relatedLocations.add(locationName.trim());
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                return new EventParseResult(content, relatedNpcs, relatedQuests, relatedLocations);
+                
             } catch (Exception e) {
-                // Игнорируем ошибки парсинга
+                System.err.println("Ошибка парсинга JSON события: " + e.getMessage());
+                // Возвращаем весь ответ как content, если парсинг не удался
+                return new EventParseResult(
+                    response,
+                    new ArrayList<>(),
+                    new ArrayList<>(),
+                    new ArrayList<>()
+                );
             }
         }
         
-        // Очищаем от markdown разметки если есть
-        response = response.replaceAll("```json", "").replaceAll("```", "").trim();
-        
-        return response;
+        // Если JSON не найден, возвращаем весь ответ как content
+        return new EventParseResult(
+            response,
+            new ArrayList<>(),
+            new ArrayList<>(),
+            new ArrayList<>()
+        );
     }
     
     /**

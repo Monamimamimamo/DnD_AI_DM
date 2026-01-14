@@ -1,14 +1,18 @@
 package com.dnd.ai_engine;
 
 import com.dnd.events.*;
+import com.dnd.entity.Campaign;
 import com.dnd.game_state.Character;
 import com.dnd.game_state.GameManager;
 import com.dnd.game_state.GameState;
 import com.dnd.messages.*;
 import com.dnd.prompts.DMPrompts;
+import com.dnd.repository.CampaignRepository;
+import com.dnd.service.MessageService;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
+import org.springframework.beans.factory.annotation.Autowired;
 import java.util.*;
 import java.util.function.Consumer;
 
@@ -23,6 +27,13 @@ public class DungeonMasterAI {
     private final GameOrchestrator orchestrator;
     private final EventGenerator eventGenerator;
     private final EventTriggerManager triggerManager;
+    private RelevantContextBuilder relevantContextBuilder; // Опциональный, для фильтрации контекста
+    
+    @Autowired(required = false)
+    private MessageService messageService; // Сервис для сохранения сообщений в БД
+    
+    @Autowired(required = false)
+    private CampaignRepository campaignRepository; // Для поиска квестов по названиям
 
     public DungeonMasterAI(String localModel) {
         this(new GameManager(), localModel);
@@ -43,6 +54,17 @@ public class DungeonMasterAI {
         // Инициализируем систему событий
         this.eventGenerator = new EventGenerator(llmClient);
         this.triggerManager = new EventTriggerManager();
+    }
+    
+    /**
+     * Устанавливает RelevantContextBuilder для фильтрации контекста
+     */
+    public void setRelevantContextBuilder(RelevantContextBuilder relevantContextBuilder) {
+        this.relevantContextBuilder = relevantContextBuilder;
+        // Также устанавливаем в EventGenerator
+        if (eventGenerator != null && relevantContextBuilder != null) {
+            eventGenerator.setRelevantContextBuilder(relevantContextBuilder);
+        }
     }
     
     public GameState getCurrentGame() {
@@ -92,9 +114,15 @@ public class DungeonMasterAI {
             throw new RuntimeException("Не удалось сгенерировать основной квест");
         }
         
-        String initialSituation = (String) questAndSituation.get("initial_situation");
-        if (initialSituation == null || initialSituation.isEmpty()) throw new RuntimeException("Не удалось сгенерировать начальную ситуацию");
-        else currentGame.setCurrentSituation(initialSituation);
+        // Получаем ситуацию из нового поля "situation" или старого "initial_situation" для обратной совместимости
+        String initialSituation = (String) questAndSituation.get("situation");
+        if (initialSituation == null || initialSituation.isEmpty()) {
+            initialSituation = (String) questAndSituation.get("initial_situation");
+        }
+        if (initialSituation == null || initialSituation.isEmpty()) {
+            throw new RuntimeException("Не удалось сгенерировать начальную ситуацию");
+        }
+        currentGame.setCurrentSituation(initialSituation);
         
         // Извлекаем локацию из JSON ответа
         String initialLocation = (String) questAndSituation.get("initial_location");
@@ -121,6 +149,33 @@ public class DungeonMasterAI {
         
         // Сохраняем начальную ситуацию в историю (для всей группы)
         currentGame.addGameEvent("situation", initialSituation, "Начальная ситуация");
+        
+        // Сохраняем начальную ситуацию в БД
+        if (messageService != null) {
+            try {
+                List<Long> locationIds = null;
+                if (initialLocation != null) {
+                    locationIds = messageService.findLocationIdsByName(
+                        currentGame.getSessionId(), 
+                        List.of(initialLocation)
+                    );
+                }
+                
+                messageService.saveDMMessage(
+                    currentGame.getSessionId(),
+                    "situation",
+                    initialSituation,
+                    initialSituation,
+                    null,
+                    initialLocation,
+                    null, // npcIds
+                    null, // questIds
+                    locationIds
+                );
+            } catch (Exception e) {
+                System.err.println("Ошибка сохранения начальной ситуации: " + e.getMessage());
+            }
+        }
         
         if (progressCallback != null) {
             progressCallback.accept("✅ Начальная сцена, квест и ситуация созданы");
@@ -236,13 +291,82 @@ public class DungeonMasterAI {
                 questAdvanced = checkAndAdvanceQuest();
             }
             
+            // Сохраняем сообщение игрока в БД
+            if (messageService != null) {
+                try {
+                    messageService.savePlayerMessage(currentGame.getSessionId(), characterName, action);
+                } catch (Exception e) {
+                    System.err.println("Ошибка сохранения сообщения игрока: " + e.getMessage());
+                }
+            }
+            
+            // Добавляем в GameState для совместимости
             currentGame.addGameEvent("player_action", action, characterName);
+            
+                // Сохраняем ответ DM в БД
+                if (messageService != null) {
+                    try {
+                        // Определяем связанные сущности
+                        List<Long> questIds = messageService.getActiveQuestIds(currentGame.getSessionId());
+                        List<Long> locationIds = null;
+                        if (currentGame.getCurrentLocation() != null) {
+                            locationIds = messageService.findLocationIdsByName(
+                                currentGame.getSessionId(), 
+                                List.of(currentGame.getCurrentLocation())
+                            );
+                        }
+                        
+                        messageService.saveDMMessage(
+                            currentGame.getSessionId(),
+                            "dm_response",
+                            dmResponse,
+                            dmResponse,
+                            characterName,
+                            currentGame.getCurrentLocation(),
+                            null, // npcIds - можно определить из контекста
+                            questIds,
+                            locationIds
+                        );
+                    } catch (Exception e) {
+                        System.err.println("Ошибка сохранения ответа DM: " + e.getMessage());
+                    }
+                }
+            
             currentGame.addGameEvent("dm_response", dmResponse, characterName);
             
             // Проверяем триггеры для генерации случайных событий
             String randomEvent = checkAndGenerateRandomEvent(gameContext);
             if (randomEvent != null && !randomEvent.isEmpty()) {
                 dmResponse = dmResponse + "\n\n" + randomEvent;
+                
+                // Сохраняем случайное событие в БД
+                if (messageService != null) {
+                    try {
+                        List<Long> questIds = messageService.getActiveQuestIds(currentGame.getSessionId());
+                        List<Long> locationIds = null;
+                        if (currentGame.getCurrentLocation() != null) {
+                            locationIds = messageService.findLocationIdsByName(
+                                currentGame.getSessionId(), 
+                                List.of(currentGame.getCurrentLocation())
+                            );
+                        }
+                        
+                        messageService.saveDMMessage(
+                            currentGame.getSessionId(),
+                            "random_event",
+                            randomEvent,
+                            randomEvent,
+                            null, // characterName
+                            currentGame.getCurrentLocation(),
+                            null, // npcIds
+                            questIds,
+                            locationIds
+                        );
+                    } catch (Exception e) {
+                        System.err.println("Ошибка сохранения случайного события: " + e.getMessage());
+                    }
+                }
+                
                 currentGame.addGameEvent("random_event", randomEvent, "");
             }
             
@@ -250,6 +374,36 @@ public class DungeonMasterAI {
             if (currentGame.isStoryCompleted() && questAdvanced) {
                 String finalScene = generateFinalScene();
                 dmResponse = dmResponse + "\n\n" + finalScene;
+                
+                // Сохраняем финальную сцену в БД
+                if (messageService != null) {
+                    try {
+                        List<Long> questIds = messageService.getActiveQuestIds(currentGame.getSessionId());
+                        List<Long> locationIds = null;
+                        if (currentGame.getCurrentLocation() != null) {
+                            locationIds = messageService.findLocationIdsByName(
+                                currentGame.getSessionId(), 
+                                List.of(currentGame.getCurrentLocation())
+                            );
+                        }
+                        
+                        messageService.saveDMMessage(
+                            currentGame.getSessionId(),
+                            "final_scene",
+                            finalScene,
+                            finalScene,
+                            null,
+                            currentGame.getCurrentLocation(),
+                            null, // npcIds
+                            questIds,
+                            locationIds
+                        );
+                    } catch (Exception e) {
+                        System.err.println("Ошибка сохранения финальной сцены: " + e.getMessage());
+                    }
+                }
+                
+                currentGame.addGameEvent("final_scene", finalScene, "");
             }
             
             // Синхронизируем GameContext обратно в GameState
@@ -321,11 +475,25 @@ public class DungeonMasterAI {
         if (contextSituation == null || contextSituation.isEmpty()) {
             contextSituation = currentGame.getCurrentSituation();
         }
+        
+        // Получаем релевантный контекст, если доступен RelevantContextBuilder
+        String relevantContextText = "";
+        if (relevantContextBuilder != null) {
+            try {
+                RelevantContextBuilder.RelevantContext relevantContext = 
+                    relevantContextBuilder.buildRelevantContext(currentGame, currentGame.getSessionId());
+                relevantContextText = relevantContext.formatForPrompt();
+            } catch (Exception e) {
+                System.err.println("Ошибка при построении релевантного контекста для ситуации: " + e.getMessage());
+            }
+        }
+        
         messages.add(Map.of("role", "user", "content", DMPrompts.getSituationPrompt(
             contextSituation,
             characterName,
             currentGame.getCurrentLocation(),
-            questInfo
+            questInfo,
+            relevantContextText
         )));
         
         String response = llmClient.generateResponse(messages, systemPrompt);
@@ -392,6 +560,35 @@ public class DungeonMasterAI {
         
         // Сохраняем ситуацию в историю
         currentGame.addGameEvent("situation", situation, characterName);
+        
+        // Сохраняем ситуацию в БД
+        if (messageService != null) {
+            try {
+                List<Long> questIds = messageService.getActiveQuestIds(currentGame.getSessionId());
+                List<Long> locationIds = null;
+                if (currentGame.getCurrentLocation() != null) {
+                    locationIds = messageService.findLocationIdsByName(
+                        currentGame.getSessionId(), 
+                        List.of(currentGame.getCurrentLocation())
+                    );
+                }
+                
+                messageService.saveDMMessage(
+                    currentGame.getSessionId(),
+                    "situation",
+                    situation,
+                    situation,
+                    characterName,
+                    currentGame.getCurrentLocation(),
+                    null, // npcIds
+                    questIds,
+                    locationIds
+                );
+            } catch (Exception e) {
+                System.err.println("Ошибка сохранения ситуации: " + e.getMessage());
+            }
+        }
+        
         gameManager.saveGame();
         return situation;
     }
@@ -462,7 +659,9 @@ public class DungeonMasterAI {
         
         Map<String, Object> parsedData = extractJsonFromResponseWithSituation(response);
         
-        if (!parsedData.containsKey("quest") || !parsedData.containsKey("initial_situation")) {
+        // Проверяем наличие квеста и ситуации (поддерживаем оба формата: "situation" и "initial_situation")
+        if (!parsedData.containsKey("quest") || 
+            (!parsedData.containsKey("situation") && !parsedData.containsKey("initial_situation"))) {
             throw new RuntimeException("Не удалось распарсить ответ LLM для генерации начальной сцены, квеста и ситуации. Ответ: " + response);
         }
         
@@ -487,8 +686,37 @@ public class DungeonMasterAI {
             String newStage = currentGame.getCurrentQuestStage();
             
             if (oldStage != null && !oldStage.equals(newStage)) {
-                currentGame.addGameEvent("quest_progress", 
-                    "Прогресс квеста: " + oldStage + " → " + newStage, "");
+                String progressMessage = "Прогресс квеста: " + oldStage + " → " + newStage;
+                currentGame.addGameEvent("quest_progress", progressMessage, "");
+                
+                // Сохраняем прогресс квеста в БД
+                if (messageService != null) {
+                    try {
+                        List<Long> questIds = messageService.getActiveQuestIds(currentGame.getSessionId());
+                        List<Long> locationIds = null;
+                        if (currentGame.getCurrentLocation() != null) {
+                            locationIds = messageService.findLocationIdsByName(
+                                currentGame.getSessionId(), 
+                                List.of(currentGame.getCurrentLocation())
+                            );
+                        }
+                        
+                        messageService.saveDMMessage(
+                            currentGame.getSessionId(),
+                            "quest_progress",
+                            progressMessage,
+                            progressMessage,
+                            null,
+                            currentGame.getCurrentLocation(),
+                            null, // npcIds
+                            questIds,
+                            locationIds
+                        );
+                    } catch (Exception e) {
+                        System.err.println("Ошибка сохранения прогресса квеста: " + e.getMessage());
+                    }
+                }
+                
                 return true;
             }
         }
@@ -633,6 +861,10 @@ public class DungeonMasterAI {
         if (questObj.has("description")) {
             quest.put("description", questObj.get("description").getAsString());
         }
+        // Добавляем quest_summary если есть
+        if (questObj.has("quest_summary")) {
+            quest.put("quest_summary", questObj.get("quest_summary").getAsString());
+        }
         
         List<String> stages = new ArrayList<>();
         questObj.getAsJsonArray("stages").forEach(e -> stages.add(e.getAsString()));
@@ -640,8 +872,15 @@ public class DungeonMasterAI {
         
         result.put("quest", quest);
         
-        if (jsonObj.has("initial_situation")) result.put("initial_situation", jsonObj.get("initial_situation").getAsString());
-        if (jsonObj.has("initial_location")) result.put("initial_location", jsonObj.get("initial_location").getAsString());
+        // Поддерживаем оба формата: новый "situation" и старый "initial_situation" для обратной совместимости
+        if (jsonObj.has("situation")) {
+            result.put("situation", jsonObj.get("situation").getAsString());
+        } else if (jsonObj.has("initial_situation")) {
+            result.put("initial_situation", jsonObj.get("initial_situation").getAsString());
+        }
+        if (jsonObj.has("initial_location")) {
+            result.put("initial_location", jsonObj.get("initial_location").getAsString());
+        }
         
         return result;
     }
@@ -741,6 +980,80 @@ public class DungeonMasterAI {
             GeneratedEvent event = eventGenerator.generateEvent(trigger, context);
             
             if (event != null) {
+                // Сохраняем событие в БД
+                if (messageService != null) {
+                    try {
+                        // Извлекаем связанные сущности из метаданных события (указанные LLM)
+                        Map<String, Object> metadata = event.getMetadata();
+                        List<Long> npcIds = new ArrayList<>();
+                        List<Long> questIds = new ArrayList<>();
+                        List<Long> locationIds = new ArrayList<>();
+                        
+                        if (metadata != null) {
+                            // Извлекаем имена NPC из metadata
+                            @SuppressWarnings("unchecked")
+                            List<String> npcNames = (List<String>) metadata.get("related_npcs");
+                            if (npcNames != null && !npcNames.isEmpty()) {
+                                npcIds = messageService.findNpcIdsByName(
+                                    currentGame.getSessionId(), 
+                                    npcNames
+                                );
+                            }
+                            
+                            // Извлекаем названия квестов из metadata
+                            @SuppressWarnings("unchecked")
+                            List<String> questTitles = (List<String>) metadata.get("related_quests");
+                            if (questTitles != null && !questTitles.isEmpty() && campaignRepository != null) {
+                                // Находим квесты по названиям
+                                Campaign campaign = campaignRepository.findBySessionId(currentGame.getSessionId())
+                                    .orElse(null);
+                                if (campaign != null) {
+                                    for (String questTitle : questTitles) {
+                                        campaign.getQuests().stream()
+                                            .filter(q -> questTitle.equalsIgnoreCase(q.getTitle()))
+                                            .findFirst()
+                                            .ifPresent(q -> questIds.add(q.getId()));
+                                    }
+                                }
+                            }
+                            
+                            // Извлекаем названия локаций из metadata
+                            @SuppressWarnings("unchecked")
+                            List<String> locationNames = (List<String>) metadata.get("related_locations");
+                            if (locationNames != null && !locationNames.isEmpty()) {
+                                locationIds = messageService.findLocationIdsByName(
+                                    currentGame.getSessionId(), 
+                                    locationNames
+                                );
+                            }
+                        }
+                        
+                        // Если локации не указаны LLM, добавляем текущую локацию
+                        if (locationIds.isEmpty() && currentGame.getCurrentLocation() != null) {
+                            List<Long> currentLocationIds = messageService.findLocationIdsByName(
+                                currentGame.getSessionId(), 
+                                List.of(currentGame.getCurrentLocation())
+                            );
+                            locationIds.addAll(currentLocationIds);
+                        }
+                        
+                        messageService.saveDMMessage(
+                            currentGame.getSessionId(),
+                            event.getType().name().toLowerCase(),
+                            event.getDescription(),
+                            event.getDescription(),
+                            null,
+                            currentGame.getCurrentLocation(),
+                            npcIds.isEmpty() ? null : npcIds,
+                            questIds.isEmpty() ? null : questIds,
+                            locationIds.isEmpty() ? null : locationIds
+                        );
+                    } catch (Exception e) {
+                        System.err.println("Ошибка сохранения сгенерированного события: " + e.getMessage());
+                        e.printStackTrace();
+                    }
+                }
+                
                 // Обновляем GameContext на основе типа события
                 gameContext.updateFromMessage(messageType, event.getDescription());
                 
