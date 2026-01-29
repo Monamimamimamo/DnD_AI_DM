@@ -28,7 +28,7 @@ public class Main {
             
             // Начинаем новую кампанию
             System.out.println("Создание новой кампании...");
-            var campaign = dm.startNewCampaign(null, message -> System.out.println("  " + message));
+            var campaign = dm.startNewCampaign(null, com.dnd.game_state.SessionDuration.MEDIUM, message -> System.out.println("  " + message));
             System.out.println();
             
             // Показываем начальную сцену

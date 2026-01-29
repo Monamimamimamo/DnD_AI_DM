@@ -349,7 +349,7 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
             
             switch (type) {
                 case "start_campaign":
-                    handleStartCampaign(session, campaignSession);
+                    handleStartCampaign(session, campaignSession, json);
                     break;
                 case "character_info":
                     handleCharacterInfo(session, json, campaignSession);
@@ -386,7 +386,7 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
         return campaigns.get(campaignId);
     }
     
-    private void handleStartCampaign(WebSocketSession session, CampaignSession campaignSession) throws Exception {
+    private void handleStartCampaign(WebSocketSession session, CampaignSession campaignSession, JsonObject json) throws Exception {
         // Только хост может начать кампанию (проверяем по userId)
         String userId = campaignSession.getUserId(session.getId());
         if (userId == null || !campaignSession.isHostByUserId(userId)) {
@@ -419,12 +419,17 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
             return;
         }
         
+        // Получаем длительность сессии из JSON (по умолчанию MEDIUM)
+        String sessionDurationStr = json.has("session_duration") ? json.get("session_duration").getAsString() : null;
+        com.dnd.game_state.SessionDuration sessionDuration = com.dnd.game_state.SessionDuration.fromString(sessionDurationStr);
+        
         // СРАЗУ меняем статус на STARTED, чтобы блокировать новые подключения
         campaignSession.setStatus(CampaignSession.CampaignStatus.STARTED);
         // Генерируем начальную сцену и квест
         List<String> progressMessages = new ArrayList<>();
         Map<String, Object> campaign = campaignService.startCampaign(
             campaignId,
+            sessionDuration,
             msg -> progressMessages.add(msg)
         );
         

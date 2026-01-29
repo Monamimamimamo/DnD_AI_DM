@@ -27,12 +27,38 @@ public class ActionParser {
     }
 
     public Map<String, Object> parseAction(String actionText, Map<String, Object> gameContext) {
-            // Этап 1: Выбор нужных эндпоинтов
-            List<String> requiredEndpoints = selectRequiredEndpoints(actionText);
-            
+        // Этап 1: Проверяем, требует ли действие проверки
+        Map<String, Object> endpointSelection = selectRequiredEndpoints(actionText);
+        
+        Boolean requiresCheck = (Boolean) endpointSelection.get("requires_check");
+        if (requiresCheck == null) requiresCheck = true;
+        
+        // Если действие не требует проверки, возвращаем результат без парсинга через SRD
+        if (!requiresCheck) {
+            System.out.println("✅ [ActionParser] Действие не требует проверки, пропускаем парсинг через SRD");
+            Map<String, Object> result = new HashMap<>();
+            result.put("is_possible", true);
+            result.put("requires_dice_roll", false);
+            result.put("intent", "trivial");
+            result.put("ability", null);
+            result.put("skill", null);
+            result.put("estimated_dc", null);
+            result.put("estimated_difficulty", null);
+            result.put("modifiers", new ArrayList<>());
+            result.put("required_items", new ArrayList<>());
+            result.put("reason", "Тривиальное действие, не требует проверки навыка или характеристики");
+            return result;
+        }
+        
         // Этап 2: Загрузка данных из выбранных эндпоинтов
-            Map<String, List<Map<String, Object>>> srdData = srdLoader.loadMultipleEndpoints(requiredEndpoints);
-            
+        @SuppressWarnings("unchecked")
+        List<String> requiredEndpoints = (List<String>) endpointSelection.get("required_endpoints");
+        if (requiredEndpoints == null || requiredEndpoints.isEmpty()) {
+            throw new RuntimeException("Действие требует проверки, но не указаны эндпоинты");
+        }
+        
+        Map<String, List<Map<String, Object>>> srdData = srdLoader.loadMultipleEndpoints(requiredEndpoints);
+        
         // Обновляем кэш навыков для валидации
         if (srdData.containsKey("skills")) {
             List<Map<String, Object>> skills = srdData.get("skills");
@@ -53,7 +79,14 @@ public class ActionParser {
         List<Map<String, String>> messages = new ArrayList<>();
         messages.add(Map.of("role", "user", "content", userPrompt));
         
+        System.out.println("🤖 [ActionParser] Финальный парсинг действия: " + actionText);
+        System.out.println("📤 [ActionParser] User prompt (первые 400 символов): " + userPrompt);
+        
         String response = llmClient.generateResponse(messages, systemPrompt);
+        
+        System.out.println("📥 [ActionParser] Полный ответ LLM для парсинга действия:");
+        System.out.println("   " + response);
+        
         Map<String, Object> parsed = extractJsonFromResponse(response, actionText);
         
         // Валидируем и дополняем результат
@@ -70,49 +103,83 @@ public class ActionParser {
         return result;
     }
 
-    private List<String> selectRequiredEndpoints(String actionText) {
+    private Map<String, Object> selectRequiredEndpoints(String actionText) {
         // Получаем список доступных эндпоинтов
         Map<String, String> availableEndpoints = srdLoader.getAvailableEndpoints();
         
-        // Промпт для выбора эндпоинтов
-        String systemPrompt = "Ты — эксперт по правилам D&D 5e и структуре SRD API.\n\n" +
-            "Твоя задача — проанализировать действие игрока и определить, какие эндпоинты из SRD API нужны для правильной интерпретации этого действия.\n\n" +
-            "Отвечай ТОЛЬКО валидным JSON:\n" +
-            "{\n" +
-            "    \"required_endpoints\": [\"skills\", \"ability-scores\"]  // Список названий эндпоинтов\n" +
-            "}";
-        
+        // Используем промпты из ActionPrompts
+        String systemPrompt = DMPrompts.getEndpointSelectionSystemPrompt();
         String userPrompt = DMPrompts.getEndpointSelectionPrompt(actionText, availableEndpoints);
         List<Map<String, String>> messages = new ArrayList<>();
         messages.add(Map.of("role", "user", "content", userPrompt));
         
+        System.out.println("🤖 [ActionParser] Запрос выбора эндпоинтов для действия: " + actionText);
+        
         String response = llmClient.generateResponse(messages, systemPrompt);
+        
+        System.out.println("📥 [ActionParser] Полный ответ LLM для выбора эндпоинтов:");
+        System.out.println("   " + response);
+        
         Map<String, Object> parsed = extractJsonFromResponse(response, actionText);
         
         if (parsed.containsKey("error")) {
             throw new RuntimeException("Ошибка при выборе эндпоинтов: " + parsed.get("error"));
         }
         
-        @SuppressWarnings("unchecked")
-        List<String> requiredEndpoints = (List<String>) parsed.get("required_endpoints");
-        
-        if (requiredEndpoints == null || requiredEndpoints.isEmpty()) {
-            throw new RuntimeException("LLM не вернул список требуемых эндпоинтов. Ответ: " + response);
-        }
-        
-        // Валидируем эндпоинты - проверяем, что они существуют
-        List<String> validEndpoints = new ArrayList<>();
-        for (String endpoint : requiredEndpoints) {
-            if (availableEndpoints.containsKey(endpoint) || availableEndpoints.containsValue(endpoint)) {
-                validEndpoints.add(endpoint);
+        // Проверяем requires_check
+        Boolean requiresCheck = null;
+        if (parsed.containsKey("requires_check")) {
+            Object reqCheckObj = parsed.get("requires_check");
+            System.out.println("🔍 [ActionParser] requires_check найден в ответе: " + reqCheckObj + " (тип: " + (reqCheckObj != null ? reqCheckObj.getClass().getSimpleName() : "null") + ")");
+            if (reqCheckObj instanceof Boolean) {
+                requiresCheck = (Boolean) reqCheckObj;
+            } else if (reqCheckObj instanceof String) {
+                requiresCheck = Boolean.parseBoolean((String) reqCheckObj);
+            } else {
+                System.err.println("⚠️ [ActionParser] Неожиданный тип для requires_check: " + reqCheckObj.getClass());
             }
+        } else {
+            System.out.println("⚠️ [ActionParser] requires_check отсутствует в ответе LLM");
         }
         
-        if (validEndpoints.isEmpty()) {
-            throw new RuntimeException("Не найдено ни одного валидного эндпоинта из запрошенных: " + requiredEndpoints);
+        if (requiresCheck == null) {
+            // По умолчанию считаем, что требуется проверка
+            System.out.println("⚠️ [ActionParser] requires_check = null, устанавливаем по умолчанию: true");
+            requiresCheck = true;
+        } else {
+            System.out.println("✅ [ActionParser] requires_check = " + requiresCheck);
         }
         
-        return validEndpoints;
+        parsed.put("requires_check", requiresCheck);
+        
+        // Валидируем эндпоинты только если требуется проверка
+        if (requiresCheck) {
+            @SuppressWarnings("unchecked")
+            List<String> requiredEndpoints = (List<String>) parsed.get("required_endpoints");
+            
+            if (requiredEndpoints == null || requiredEndpoints.isEmpty()) {
+                throw new RuntimeException("Действие требует проверки, но LLM не вернул список требуемых эндпоинтов. Ответ: " + response);
+            }
+            
+            // Валидируем эндпоинты - проверяем, что они существуют
+            List<String> validEndpoints = new ArrayList<>();
+            for (String endpoint : requiredEndpoints) {
+                if (availableEndpoints.containsKey(endpoint) || availableEndpoints.containsValue(endpoint)) {
+                    validEndpoints.add(endpoint);
+                }
+            }
+            
+            if (validEndpoints.isEmpty()) {
+                throw new RuntimeException("Не найдено ни одного валидного эндпоинта из запрошенных: " + requiredEndpoints);
+            }
+            
+            parsed.put("required_endpoints", validEndpoints);
+        } else {
+            // Если не требуется проверка, эндпоинты не нужны
+            parsed.put("required_endpoints", new ArrayList<>());
+        }
+        
+        return parsed;
     }
     
     private String getParserSystemPrompt() {
@@ -138,6 +205,13 @@ public class ActionParser {
         // Убеждаемся, что все обязательные поля присутствуют
         Map<String, Object> result = new HashMap<>();
         result.put("is_possible", parsed.getOrDefault("is_possible", true));
+        // requires_dice_roll: если не указан, по умолчанию нужен бросок
+        // Но если указан явно (даже как false), используем его значение
+        if (parsed.containsKey("requires_dice_roll")) {
+            result.put("requires_dice_roll", parsed.get("requires_dice_roll"));
+        } else {
+            result.put("requires_dice_roll", true); // По умолчанию нужен бросок
+        }
         result.put("intent", parsed.getOrDefault("intent", "unknown"));
         result.put("ability", parsed.getOrDefault("ability", "strength"));
         result.put("skill", parsed.get("skill"));
@@ -146,7 +220,6 @@ public class ActionParser {
         result.put("modifiers", parsed.getOrDefault("modifiers", new ArrayList<>()));
         result.put("required_items", parsed.getOrDefault("required_items", new ArrayList<>()));
         result.put("reason", parsed.getOrDefault("reason", ""));
-        result.put("base_action", parsed.get("base_action"));
         result.put("action_text", actionText);
         
         // Валидируем навык - должен быть из SRD
@@ -197,6 +270,7 @@ public class ActionParser {
     
     private Map<String, Object> extractJsonFromResponse(String response, String actionText) {
         if (response == null || response.trim().isEmpty()) {
+            System.err.println("❌ [ActionParser] Получен пустой ответ от LLM для действия: " + actionText);
             throw new RuntimeException("Получен пустой ответ от LLM при парсинге действия: " + actionText);
         }
         
@@ -206,27 +280,38 @@ public class ActionParser {
         if (response.startsWith("{")) {
             try {
                 JsonObject jsonObj = gson.fromJson(response, JsonObject.class);
-                return parseJsonObject(jsonObj);
+                Map<String, Object> result = parseJsonObject(jsonObj);
+                return result;
             } catch (Exception e) {
+                System.err.println("❌ [ActionParser] Ошибка парсинга JSON: " + e.getMessage());
+                System.err.println("   Полный ответ: " + response);
                 throw new RuntimeException("Ошибка парсинга JSON из ответа LLM: " + e.getMessage() + ". Ответ: " + response, e);
             }
         }
         
         // Ищем JSON в тексте
+        System.out.println("🔍 [ActionParser] Поиск JSON в тексте ответа");
         int startIdx = response.indexOf('{');
         int endIdx = response.lastIndexOf('}');
         
         if (startIdx == -1 || endIdx == -1 || endIdx <= startIdx) {
+            System.err.println("❌ [ActionParser] Не удалось найти JSON в ответе");
+            System.err.println("   Полный ответ: " + response);
             throw new RuntimeException("Не удалось найти JSON в ответе LLM. Ответ: " + response);
         }
         
         String jsonStr = response.substring(startIdx, endIdx + 1);
+        System.out.println("🔍 [ActionParser] Извлеченный JSON: " + jsonStr);
         try {
             JsonObject jsonObj = gson.fromJson(jsonStr, JsonObject.class);
-            return parseJsonObject(jsonObj);
+            Map<String, Object> result = parseJsonObject(jsonObj);
+            System.out.println("✅ [ActionParser] JSON успешно распарсен из текста");
+            return result;
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {
+            System.err.println("❌ [ActionParser] Ошибка парсинга извлеченного JSON: " + e.getMessage());
+            System.err.println("   Извлеченный JSON: " + jsonStr);
             throw new RuntimeException("Ошибка парсинга JSON из текста: " + e.getMessage() + ". JSON: " + jsonStr, e);
         }
     }
@@ -236,6 +321,22 @@ public class ActionParser {
         
         if (jsonObj.has("is_possible")) {
             result.put("is_possible", jsonObj.get("is_possible").getAsBoolean());
+        }
+        
+        if (jsonObj.has("requires_check")) {
+            if (jsonObj.get("requires_check").isJsonNull()) {
+                result.put("requires_check", true); // По умолчанию требуется проверка
+            } else {
+                result.put("requires_check", jsonObj.get("requires_check").getAsBoolean());
+            }
+        }
+        
+        if (jsonObj.has("requires_dice_roll")) {
+            if (jsonObj.get("requires_dice_roll").isJsonNull()) {
+                result.put("requires_dice_roll", true); // По умолчанию нужен бросок
+            } else {
+                result.put("requires_dice_roll", jsonObj.get("requires_dice_roll").getAsBoolean());
+            }
         }
         
         if (jsonObj.has("intent")) {
@@ -315,14 +416,6 @@ public class ActionParser {
                 result.put("reason", "");
             } else {
                 result.put("reason", jsonObj.get("reason").getAsString());
-            }
-        }
-        
-        if (jsonObj.has("base_action")) {
-            if (jsonObj.get("base_action").isJsonNull()) {
-        result.put("base_action", null);
-            } else {
-                result.put("base_action", jsonObj.get("base_action").getAsString());
             }
         }
         

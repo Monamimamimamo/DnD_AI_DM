@@ -3,10 +3,13 @@ package com.dnd.messages;
 import com.dnd.game_state.GameState;
 import com.dnd.entity.*;
 import com.dnd.repository.CampaignRepository;
+import com.dnd.service.EmbeddingService;
+import com.dnd.service.VectorDBService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Строитель релевантного контекста для LLM
@@ -17,6 +20,18 @@ public class RelevantContextBuilder {
     
     @Autowired
     private CampaignRepository campaignRepository;
+    
+    @Autowired(required = false)
+    private EmbeddingService embeddingService;
+    
+    @Autowired(required = false)
+    private VectorDBService vectorDBService;
+    
+    // Минимальная похожесть для семантического поиска (0.0 - 1.0)
+    private static final double MIN_SIMILARITY = 0.6;
+    
+    // Максимальное количество результатов RAG поиска
+    private static final int RAG_TOP_K = 10;
     
     /**
      * Строит релевантный контекст для генерации сообщения
@@ -37,11 +52,14 @@ public class RelevantContextBuilder {
             Set<String> questKeywords = extractQuestKeywords(mainQuest, currentQuestStage);
             context.setQuestKeywords(questKeywords);
             
-            // Фильтруем события истории
-            List<GameState.GameEvent> relevantEvents = filterRelevantEvents(
+            // Фильтруем события истории (гибридный подход: keyword + RAG)
+            List<GameState.GameEvent> relevantEvents = filterRelevantEventsHybrid(
                 gameState.getGameHistory(), 
                 questKeywords,
-                mainQuest
+                mainQuest,
+                currentQuestStage,
+                gameState.getCurrentLocation(),
+                campaignId
             );
             context.setRelevantEvents(relevantEvents);
             
@@ -169,7 +187,106 @@ public class RelevantContextBuilder {
     }
     
     /**
-     * Фильтрует события истории, оставляя только релевантные к квесту
+     * Гибридный метод фильтрации событий: комбинирует keyword-based и RAG поиск
+     */
+    private List<GameState.GameEvent> filterRelevantEventsHybrid(
+        List<GameState.GameEvent> allEvents,
+        Set<String> questKeywords,
+        Map<String, Object> quest,
+        String currentQuestStage,
+        String currentLocation,
+        String campaignId
+    ) {
+        // Сначала используем keyword-based поиск (как раньше)
+        List<GameState.GameEvent> keywordEvents = filterRelevantEvents(
+            allEvents, questKeywords, quest
+        );
+        
+        // Если RAG сервисы доступны, добавляем семантический поиск
+        if (embeddingService != null && vectorDBService != null && 
+            embeddingService.isAvailable()) {
+            try {
+                // Получаем Campaign для получения ID
+                Campaign campaign = campaignRepository.findBySessionId(campaignId).orElse(null);
+                if (campaign == null || campaign.getId() == null) {
+                    return keywordEvents; // Fallback на keyword поиск
+                }
+                
+                // Формируем запрос для RAG поиска
+                String questTitle = (String) quest.getOrDefault("title", "");
+                String questGoal = (String) quest.getOrDefault("goal", "");
+                String queryText = embeddingService.buildEnhancedText(
+                    questTitle + " " + questGoal + " " + currentQuestStage,
+                    questTitle,
+                    currentLocation,
+                    null
+                );
+                
+                // Получаем эмбеддинг запроса
+                float[] queryEmbedding = embeddingService.embed(queryText);
+                
+                // Ищем похожие события через RAG
+                List<VectorDBService.SimilarEvent> ragEvents = vectorDBService.searchSimilar(
+                    queryEmbedding,
+                    campaign.getId(),
+                    RAG_TOP_K,
+                    MIN_SIMILARITY
+                );
+                
+                // Создаем Set описаний событий из keyword результатов для быстрой проверки
+                Set<String> keywordDescriptions = keywordEvents.stream()
+                    .map(GameState.GameEvent::getDescription)
+                    .collect(Collectors.toSet());
+                
+                // Добавляем события из RAG, которых нет в keyword результатах
+                for (VectorDBService.SimilarEvent ragEvent : ragEvents) {
+                    if (ragEvent.getSimilarity() >= MIN_SIMILARITY) {
+                        // Проверяем, нет ли уже этого события в keyword результатах по описанию
+                        boolean alreadyIncluded = keywordDescriptions.contains(ragEvent.getDescription());
+                        
+                        if (!alreadyIncluded) {
+                            // Находим соответствующее событие в allEvents по описанию
+                            GameState.GameEvent matchingEvent = allEvents.stream()
+                                .filter(e -> e.getDescription().equals(ragEvent.getDescription()))
+                                .findFirst()
+                                .orElse(null);
+                            
+                            if (matchingEvent != null && !keywordEvents.contains(matchingEvent)) {
+                                keywordEvents.add(matchingEvent);
+                                keywordDescriptions.add(ragEvent.getDescription());
+                            }
+                        }
+                    }
+                }
+                
+                // Сортируем по релевантности (RAG события с высокой похожестью в начале)
+                keywordEvents.sort((e1, e2) -> {
+                    // Приоритет событиям, найденным через RAG
+                    double sim1 = ragEvents.stream()
+                        .filter(re -> re.getDescription().equals(e1.getDescription()))
+                        .mapToDouble(VectorDBService.SimilarEvent::getSimilarity)
+                        .findFirst()
+                        .orElse(0.0);
+                    double sim2 = ragEvents.stream()
+                        .filter(re -> re.getDescription().equals(e2.getDescription()))
+                        .mapToDouble(VectorDBService.SimilarEvent::getSimilarity)
+                        .findFirst()
+                        .orElse(0.0);
+                    return Double.compare(sim2, sim1);
+                });
+                
+            } catch (Exception e) {
+                System.err.println("Ошибка RAG поиска, используем только keyword поиск: " + e.getMessage());
+                // Fallback на keyword поиск при ошибке
+            }
+        }
+        
+        // Ограничиваем количество (максимум 15 событий)
+        return keywordEvents.size() > 15 ? keywordEvents.subList(0, 15) : keywordEvents;
+    }
+    
+    /**
+     * Фильтрует события истории, оставляя только релевантные к квесту (keyword-based)
      */
     private List<GameState.GameEvent> filterRelevantEvents(
         List<GameState.GameEvent> allEvents,
@@ -556,9 +673,6 @@ public class RelevantContextBuilder {
                     context.append("- ").append(npc.get("name"));
                     if (npc.get("description") != null) {
                         String desc = (String) npc.get("description");
-                        if (desc.length() > 100) {
-                            desc = desc.substring(0, 100) + "...";
-                        }
                         context.append(": ").append(desc);
                     }
                     context.append("\n");
@@ -573,9 +687,6 @@ public class RelevantContextBuilder {
                     context.append("- ").append(loc.get("name"));
                     if (loc.get("description") != null) {
                         String desc = (String) loc.get("description");
-                        if (desc.length() > 80) {
-                            desc = desc.substring(0, 80) + "...";
-                        }
                         context.append(": ").append(desc);
                     }
                     context.append("\n");
@@ -599,9 +710,6 @@ public class RelevantContextBuilder {
                 context.append("=== ИНФОРМАЦИЯ О МИРЕ, СВЯЗАННАЯ С КВЕСТОМ ===\n");
                 if (relevantWorldInfo.containsKey("world_description")) {
                     String worldDesc = (String) relevantWorldInfo.get("world_description");
-                    if (worldDesc.length() > 300) {
-                        worldDesc = worldDesc.substring(0, 300) + "...";
-                    }
                     context.append(worldDesc).append("\n");
                 }
                 context.append("\n");

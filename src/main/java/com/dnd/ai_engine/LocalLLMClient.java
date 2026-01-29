@@ -126,6 +126,8 @@ public class LocalLLMClient {
                             System.err.println("⚠️ Подозрительно короткий ответ от LLM: '" + llmResponse + "'. Полный ответ от Ollama: " + json);
                         }
                         System.out.println("📊 Запрос к Ollama (" + config.getModelName() + ") выполнен за " + (requestTime / 1000.0) + " сек, токенов: ~" + llmResponse.length() / 4);
+                        System.out.println("📥 [LLM] Полный ответ (" + config.getModelName() + "):");
+                        System.out.println("   " + llmResponse);
                         return llmResponse;
                     } else {
                         throw new RuntimeException("Ответ от Ollama не содержит поле 'response'. Полный ответ: " + json);

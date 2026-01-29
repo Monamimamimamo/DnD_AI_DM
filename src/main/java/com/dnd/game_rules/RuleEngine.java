@@ -22,8 +22,18 @@ public class RuleEngine {
     public Map<String, Object> evaluateAction(Map<String, Object> parsedAction, 
                                               Character character, 
                                               Map<String, Object> gameContext) {
-        String ability = (String) parsedAction.getOrDefault("ability", "strength");
-        String skill = (String) parsedAction.getOrDefault("skill", null);
+        // ability должен быть указан для действий, требующих броска кубиков
+        Object abilityObj = parsedAction.get("ability");
+        if (abilityObj == null || !(abilityObj instanceof String) || ((String) abilityObj).isEmpty()) {
+            throw new IllegalArgumentException("ability должен быть указан для действий, требующих броска кубиков");
+        }
+        String ability = (String) abilityObj;
+        
+        // skill может быть null (не все действия требуют навыка)
+        Object skillObj = parsedAction.get("skill");
+        String skill = (skillObj != null && skillObj instanceof String && !((String) skillObj).isEmpty()) 
+            ? (String) skillObj 
+            : null;
         Object estimatedDcObj = parsedAction.get("estimated_dc");
         
         int dc = 15; // По умолчанию

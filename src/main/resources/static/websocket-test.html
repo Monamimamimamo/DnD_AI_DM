@@ -164,6 +164,14 @@
             <button onclick="sendCharacterInfo()">Отправить информацию о персонаже</button>
             
             <h3>Управление кампанией</h3>
+            <div style="margin-bottom: 10px;">
+                <label for="sessionDuration" style="display: block; margin-bottom: 5px; font-weight: bold;">Длительность сессии:</label>
+                <select id="sessionDuration" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                    <option value="short">Короткая (~4 часа) - Маленький городок с несколькими ключевыми точками</option>
+                    <option value="medium" selected>Средняя (~30-40 часов) - Регион с несколькими локациями</option>
+                    <option value="long">Длинная (не ограничена) - Огромный мир с глобальным квестом</option>
+                </select>
+            </div>
             <button id="startCampaignBtn" onclick="startCampaign()" disabled style="background: #533483;">Начать кампанию</button>
             <div id="campaignStatus" style="margin: 10px 0; padding: 10px; background: #0f3460; border-radius: 4px; display: none;">
                 <p><strong>Статус:</strong> <span id="statusText">Ожидание</span></p>
@@ -676,8 +684,11 @@
                 return;
             }
             
+            const sessionDuration = document.getElementById('sessionDuration').value;
+            
             const message = {
-                type: 'start_campaign'
+                type: 'start_campaign',
+                session_duration: sessionDuration
             };
             
             ws.send(JSON.stringify(message));

@@ -60,7 +60,7 @@ public class CampaignService {
     /**
      * Начать кампанию (генерирует начальную сцену и квест)
      */
-    public Map<String, Object> startCampaign(String sessionId, Consumer<String> progressCallback) {
+    public Map<String, Object> startCampaign(String sessionId, com.dnd.game_state.SessionDuration sessionDuration, Consumer<String> progressCallback) {
         GameState game = gameManager.loadGame(sessionId);
         if (game == null) {
             throw new IllegalArgumentException("Кампания не найдена: " + sessionId);
@@ -69,15 +69,12 @@ public class CampaignService {
         gameManager.setCurrentGame(game);
         dungeonMasterAI.setCurrentGame(game);
         
+        // Устанавливаем длительность сессии
+        game.setSessionDuration(sessionDuration);
+        gameManager.saveGame();
+        
         // Генерируем начальную сцену и квест
-        return dungeonMasterAI.startNewCampaign(sessionId, progressCallback);
-    }
-    
-    /**
-     * Создать новую кампанию (legacy метод для совместимости)
-     */
-    public Map<String, Object> startNewCampaign(String sessionId, Consumer<String> progressCallback) {
-        return startCampaign(sessionId, progressCallback);
+        return dungeonMasterAI.startNewCampaign(sessionId, sessionDuration, progressCallback);
     }
     
     /**

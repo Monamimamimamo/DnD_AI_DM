@@ -95,6 +95,7 @@ public class MessageTypeValidator {
                        messageType == MessageType.LOCATION_DESCRIPTION ||
                        messageType == MessageType.EXPLORATION_EVENT ||
                        messageType == MessageType.SIDE_QUEST_INTRO ||
+                       messageType == MessageType.ACTION_RESULT ||
                        messageType == MessageType.SYSTEM;
                        
             case IN_DIALOGUE:

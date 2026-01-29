@@ -45,6 +45,7 @@ public class GameOrchestrator {
             ruleResult.put("is_possible", false);
             ruleResult.put("reason", reason);
             ruleResult.put("result", "impossible");
+            ruleResult.put("requires_dice_roll", false); // Невозможные действия не требуют броска кубиков
             
             Map<String, Object> result = new HashMap<>();
             result.put("parsed_action", parsedAction);
@@ -55,8 +56,46 @@ public class GameOrchestrator {
             return result;
         }
         
-        // Шаг 2: Проверяем правила
-        Map<String, Object> ruleResult = ruleEngine.evaluateAction(parsedAction, character, gameContext);
+        // Шаг 2: Проверяем, нужен ли бросок кубиков
+        Object requiresDiceRollObj = parsedAction.get("requires_dice_roll");
+        boolean requiresDiceRoll;
+        if (requiresDiceRollObj instanceof Boolean) {
+            requiresDiceRoll = (Boolean) requiresDiceRollObj;
+        } else if (requiresDiceRollObj instanceof String) {
+            requiresDiceRoll = Boolean.parseBoolean((String) requiresDiceRollObj);
+        } else {
+            // По умолчанию нужен бросок, если поле отсутствует или имеет неожиданный тип
+            requiresDiceRoll = true;
+        }
+        
+        Map<String, Object> ruleResult;
+        
+        if (requiresDiceRoll) {
+            // Проверяем, что ability указан (обязателен для действий, требующих броска кубиков)
+            Object abilityObj = parsedAction.get("ability");
+            if (abilityObj == null || !(abilityObj instanceof String) || ((String) abilityObj).isEmpty()) {
+                // Если requires_dice_roll: true, но ability не указан - это ошибка парсинга
+                // Обрабатываем как тривиальное действие (автоматический успех)
+                System.err.println("⚠️ [GameOrchestrator] Предупреждение: ability не указан для действия, требующего броска кубиков. Обрабатываем как тривиальное действие.");
+                requiresDiceRoll = false;
+            }
+        }
+        
+        if (requiresDiceRoll) {
+            // Проверяем правила и бросаем кубики
+            ruleResult = ruleEngine.evaluateAction(parsedAction, character, gameContext);
+        } else {
+            // Тривиальное действие - автоматический успех без броска кубиков
+            System.out.println("🎲 [GameOrchestrator] Действие тривиальное, бросок кубиков не требуется");
+            ruleResult = new HashMap<>();
+            ruleResult.put("result", "automatic_success");
+            ruleResult.put("roll", null);
+            ruleResult.put("total", null);
+            ruleResult.put("dc", null);
+            ruleResult.put("skill", parsedAction.get("skill"));
+            ruleResult.put("ability", parsedAction.get("ability"));
+            ruleResult.put("requires_dice_roll", false);
+        }
         
         // Шаг 3: Генерируем нарратив
         String dmNarrative = generateNarrative(actionText, parsedAction, ruleResult, character, gameContext);
@@ -65,8 +104,14 @@ public class GameOrchestrator {
         result.put("parsed_action", parsedAction);
         result.put("rule_result", ruleResult);
         result.put("dm_narrative", dmNarrative);
-        result.put("success", ruleResult.getOrDefault("result", "").toString().equals("success") ||
-                             ruleResult.getOrDefault("result", "").toString().equals("partial_success"));
+        
+        // Определяем успех: success, partial_success или automatic_success
+        String resultStatus = ruleResult.getOrDefault("result", "").toString();
+        boolean isSuccess = resultStatus.equals("success") || 
+                           resultStatus.equals("partial_success") || 
+                           resultStatus.equals("automatic_success");
+        result.put("success", isSuccess);
+        
         return result;
     }
 

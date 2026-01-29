@@ -12,6 +12,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
+import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
@@ -19,6 +20,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * Spring Boot Application для AI Dungeon Master API
  */
 @SpringBootApplication
+@EnableAsync
 @Configuration
 @ComponentScan(basePackages = "com.dnd")
 @EnableJpaRepositories(basePackages = {"com.dnd.repository", "com.dnd.identity"})
@@ -55,17 +57,6 @@ public class GameApiApplication implements WebMvcConfigurer {
             DungeonMasterAI dm = new DungeonMasterAI(gameManager, "mistral:7b");
             // Устанавливаем RelevantContextBuilder для фильтрации контекста
             dm.setRelevantContextBuilder(relevantContextBuilder);
-            // Устанавливаем RelevantContextBuilder в EventGenerator через рефлексию
-            try {
-                java.lang.reflect.Field eventGeneratorField = DungeonMasterAI.class.getDeclaredField("eventGenerator");
-                eventGeneratorField.setAccessible(true);
-                com.dnd.events.EventGenerator eventGenerator = (com.dnd.events.EventGenerator) eventGeneratorField.get(dm);
-                if (eventGenerator != null) {
-                    eventGenerator.setRelevantContextBuilder(relevantContextBuilder);
-                }
-            } catch (Exception e) {
-                System.err.println("Не удалось установить RelevantContextBuilder в EventGenerator: " + e.getMessage());
-            }
             // Устанавливаем MessageService через рефлексию
             try {
                 java.lang.reflect.Field field = DungeonMasterAI.class.getDeclaredField("messageService");

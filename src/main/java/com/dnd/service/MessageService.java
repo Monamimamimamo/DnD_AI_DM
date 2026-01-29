@@ -43,6 +43,9 @@ public class MessageService {
     @Autowired
     private QuestRepository questRepository;
     
+    @Autowired(required = false)
+    private com.dnd.service.EventIndexingService eventIndexingService;
+    
     /**
      * Сохраняет сообщение от игрока
      */
@@ -121,7 +124,14 @@ public class MessageService {
             event.setLocations(locationsToAdd);
         }
         
-        return gameEventRepository.save(event);
+        GameEvent savedEvent = gameEventRepository.save(event);
+        
+        // Индексируем событие в векторную БД для RAG
+        if (eventIndexingService != null) {
+            eventIndexingService.indexEvent(savedEvent);
+        }
+        
+        return savedEvent;
     }
     
     /**
@@ -167,6 +177,24 @@ public class MessageService {
         
         return campaign.getQuests().stream()
             .filter(q -> !q.getCompleted())
+            .map(Quest::getId)
+            .collect(Collectors.toList());
+    }
+    
+    /**
+     * Находит ID квестов по их названиям (работает внутри транзакции)
+     */
+    @Transactional(readOnly = true)
+    public List<Long> findQuestIdsByTitles(String campaignId, List<String> questTitles) {
+        Campaign campaign = campaignRepository.findBySessionId(campaignId)
+            .orElse(null);
+        
+        if (campaign == null || questTitles == null || questTitles.isEmpty()) {
+            return new ArrayList<>();
+        }
+        
+        return campaign.getQuests().stream()
+            .filter(q -> questTitles.contains(q.getTitle()))
             .map(Quest::getId)
             .collect(Collectors.toList());
     }

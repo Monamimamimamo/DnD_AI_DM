@@ -26,6 +26,9 @@ public class GameState {
     
     // Информация о мире кампании
     private Map<String, Object> world = null;
+    
+    // Длительность сессии
+    private SessionDuration sessionDuration = SessionDuration.MEDIUM; // По умолчанию средняя
 
     private List<User> users = new ArrayList<>();
 
@@ -177,6 +180,11 @@ public class GameState {
 
     public Map<String, Object> getWorld() { return world; }
     public void setWorld(Map<String, Object> world) { this.world = world; }
+    
+    public SessionDuration getSessionDuration() { return sessionDuration; }
+    public void setSessionDuration(SessionDuration sessionDuration) { 
+        this.sessionDuration = sessionDuration != null ? sessionDuration : SessionDuration.MEDIUM;
+    }
 
     public List<User> getUsers() {
         // Возвращаем список пользователей, участвующих в игре

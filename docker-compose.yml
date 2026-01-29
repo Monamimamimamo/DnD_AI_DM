@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg15
     container_name: dnd-postgres
     environment:
       POSTGRES_DB: dnd_ai_dm
@@ -10,6 +10,7 @@ services:
       - '5432:5432'
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ./src/main/resources/db/migration:/docker-entrypoint-initdb.d
     networks:
       - dnd-network
     healthcheck:
@@ -57,7 +58,6 @@ services:
       - ollama-data:/root/.ollama
     networks:
       - dnd-network
-    # Для использования GPU необходимо установить nvidia-container-toolkit и раскомментировать deploy секцию ниже
     deploy:
       resources:
         reservations:

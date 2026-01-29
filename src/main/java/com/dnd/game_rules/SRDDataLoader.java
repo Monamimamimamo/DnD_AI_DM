@@ -103,9 +103,98 @@ public class SRDDataLoader {
     public Map<String, List<Map<String, Object>>> loadMultipleEndpoints(List<String> endpoints) {
         Map<String, List<Map<String, Object>>> result = new HashMap<>();
         for (String endpoint : endpoints) {
-            result.put(endpoint, loadEndpointData(endpoint));
+            List<Map<String, Object>> data = loadEndpointData(endpoint);
+            
+            // Для эндпоинта "skills" загружаем полную информацию о каждом навыке
+            if ("skills".equals(endpoint)) {
+                data = loadFullSkillData(data);
+            }
+            
+            result.put(endpoint, data);
         }
         return result;
+    }
+    
+    /**
+     * Загружает полную информацию о навыках по их URL
+     */
+    private List<Map<String, Object>> loadFullSkillData(List<Map<String, Object>> skillsList) {
+        List<Map<String, Object>> fullSkills = new ArrayList<>();
+        
+        for (Map<String, Object> skillRef : skillsList) {
+            String url = (String) skillRef.get("url");
+            if (url != null && !url.isEmpty()) {
+                // Загружаем полную информацию о навыке
+                Map<String, Object> fullSkill = loadSingleItem(url);
+                if (fullSkill != null && !fullSkill.isEmpty()) {
+                    fullSkills.add(fullSkill);
+                } else {
+                    // Если не удалось загрузить, используем краткую информацию
+                    System.out.println("⚠️ [SRDDataLoader] Не удалось загрузить полную информацию для навыка: " + 
+                                     skillRef.get("name") + " (URL: " + url + ")");
+                    fullSkills.add(skillRef);
+                }
+            } else {
+                System.out.println("⚠️ [SRDDataLoader] Навык " + skillRef.get("name") + " не имеет URL");
+                fullSkills.add(skillRef);
+            }
+        }
+        return fullSkills;
+    }
+    
+    /**
+     * Загружает один элемент по его URL
+     */
+    private Map<String, Object> loadSingleItem(String url) {
+        try {
+            // URL может быть относительным (начинаться с /api) или абсолютным
+            String fullUrl;
+            if (url.startsWith("http")) {
+                fullUrl = url;
+            } else if (url.startsWith("/api")) {
+                // Относительный URL вида /api/2014/skills/acrobatics
+                // apiUrl имеет вид: http://localhost:3000/api/2014
+                // Нужно получить базовый URL: http://localhost:3000
+                // Находим позицию "/api" и берем всё до неё
+                int apiIndex = apiUrl.indexOf("/api");
+                if (apiIndex > 0) {
+                    String baseUrl = apiUrl.substring(0, apiIndex);
+                    fullUrl = baseUrl + url;
+                } else {
+                    // Если не нашли /api в apiUrl (не должно происходить), используем apiUrl как есть
+                    fullUrl = apiUrl + url.substring(url.indexOf("/", url.indexOf("/api") + 4));
+                }
+            } else {
+                fullUrl = apiUrl + "/" + url;
+            }
+            
+            Request request = new Request.Builder()
+                .url(fullUrl)
+                .build();
+            
+            try (Response response = httpClient.newCall(request).execute()) {
+                if (response.isSuccessful() && response.body() != null) {
+                    String json = response.body().string();
+                    JsonElement element = gson.fromJson(json, JsonElement.class);
+                    
+                    if (element.isJsonObject()) {
+                        Map<String, Object> result = parseJsonObject(element.getAsJsonObject());
+                        return result;
+                    } else {
+                        System.err.println("⚠️ [SRDDataLoader] Ответ не является JSON объектом для URL: " + fullUrl);
+                    }
+                } else {
+                    System.err.println("⚠️ [SRDDataLoader] HTTP ошибка " + response.code() + " для URL: " + fullUrl);
+                }
+            }
+        } catch (IOException e) {
+            System.err.println("⚠️ [SRDDataLoader] Ошибка загрузки (" + url + "): " + e.getMessage());
+            e.printStackTrace();
+        } catch (Exception e) {
+            System.err.println("⚠️ [SRDDataLoader] Неожиданная ошибка при загрузке (" + url + "): " + e.getMessage());
+            e.printStackTrace();
+        }
+        return null;
     }
 
     private List<Map<String, Object>> parseResultsArray(com.google.gson.JsonArray array) {

@@ -3,7 +3,9 @@ package com.dnd.messages;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -60,6 +62,16 @@ public class MessageParser {
         String location = getStringValue(jsonObj, "location", null);
         if (location != null && !location.isEmpty()) {
             metadata.put("location", location);
+        }
+        
+        // Извлекаем анализ, если есть
+        if (jsonObj.has("analysis") && jsonObj.get("analysis").isJsonObject()) {
+            JsonObject analysisObj = jsonObj.getAsJsonObject("analysis");
+            Map<String, Object> analysis = new HashMap<>();
+            for (Map.Entry<String, JsonElement> entry : analysisObj.entrySet()) {
+                analysis.put(entry.getKey(), extractValue(entry.getValue()));
+            }
+            metadata.put("analysis", analysis);
         }
         
         // Создаем структурированное сообщение
@@ -182,7 +194,12 @@ public class MessageParser {
             }
         }
         if (element.isJsonArray()) {
-            return element.getAsJsonArray();
+            // Преобразуем JsonArray в List рекурсивно
+            List<Object> list = new ArrayList<>();
+            for (JsonElement arrayElement : element.getAsJsonArray()) {
+                list.add(extractValue(arrayElement));
+            }
+            return list;
         }
         if (element.isJsonObject()) {
             Map<String, Object> map = new HashMap<>();

@@ -10,7 +10,6 @@ import java.util.Map;
  * - SystemPrompts для системных промптов
  * - WorldPrompts для генерации мира и квестов
  * - SituationPrompts для генерации ситуаций
- * - EventPrompts для генерации событий
  * - ActionPrompts для парсинга действий
  */
 @Deprecated
@@ -37,16 +36,16 @@ public class DMPrompts {
     /**
      * Промпт для генерации мира кампании
      */
-    public static String getWorldBuildingPrompt() {
-        return WorldPrompts.getWorldBuildingPrompt();
+    public static String getWorldBuildingPrompt(com.dnd.game_state.SessionDuration sessionDuration) {
+        return WorldPrompts.getWorldBuildingPrompt(sessionDuration);
     }
     
     /**
      * Промпт для генерации начальной сцены, квеста и начальной ситуации
      */
-    public static String getInitialSceneQuestAndSituationPrompt(Map<String, Object> world) {
-        return WorldPrompts.getInitialSceneQuestAndSituationPrompt(world);
-        }
+    public static String getInitialSceneQuestAndSituationPrompt(Map<String, Object> world, com.dnd.game_state.SessionDuration sessionDuration) {
+        return WorldPrompts.getInitialSceneQuestAndSituationPrompt(world, sessionDuration);
+    }
         
     /**
      * Промпт для генерации финальной сцены при завершении квеста
@@ -71,32 +70,6 @@ public class DMPrompts {
     public static String getSituationPrompt(String previousSituation, String characterName, 
                                            String currentLocation, Map<String, Object> questInfo, String relevantContext) {
         return SituationPrompts.getSituationPrompt(previousSituation, characterName, currentLocation, questInfo, relevantContext);
-    }
-    
-    // ========== Промпты для генерации событий ==========
-    
-    /**
-     * Промпт для генерации случайного события
-     */
-    public static String getRandomEventPrompt(String eventType, String connectionText, 
-                                             String gameContext, Map<String, Object> historyAnalysis) {
-        return EventPrompts.getRandomEventPrompt(eventType, connectionText, gameContext, historyAnalysis);
-    }
-    
-    /**
-     * Промпт для генерации встречи с NPC
-     */
-    public static String getNPCEncounterPrompt(String connectionText, String gameContext,
-                                              Map<String, Object> historyAnalysis) {
-        return EventPrompts.getNPCEncounterPrompt(connectionText, gameContext, historyAnalysis);
-    }
-    
-    /**
-     * Промпт для генерации побочного квеста
-     */
-    public static String getSideQuestPrompt(String connectionText, String gameContext,
-                                           Map<String, Object> historyAnalysis) {
-        return EventPrompts.getSideQuestPrompt(connectionText, gameContext, historyAnalysis);
     }
     
     // ========== Промпты для парсинга действий ==========
@@ -124,6 +97,13 @@ public class DMPrompts {
      */
     public static String getActionParserSystemPrompt(String skillsList, String dcInfo) {
         return ActionPrompts.getActionParserSystemPrompt(skillsList, dcInfo);
+    }
+    
+    /**
+     * Системный промпт для выбора эндпоинтов
+     */
+    public static String getEndpointSelectionSystemPrompt() {
+        return ActionPrompts.getEndpointSelectionSystemPrompt();
     }
     
     /**

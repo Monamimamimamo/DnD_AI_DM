@@ -32,6 +32,9 @@ dependencies {
     // PostgreSQL для хранения данных
     implementation 'org.postgresql:postgresql:42.7.1'
     
+    // pgvector для векторного поиска
+    implementation 'com.pgvector:pgvector:0.1.4'
+    
     // JWT для аутентификации
     implementation 'io.jsonwebtoken:jjwt-api:0.12.3'
     implementation 'io.jsonwebtoken:jjwt-impl:0.12.3'
