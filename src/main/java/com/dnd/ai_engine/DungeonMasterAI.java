@@ -12,10 +12,13 @@ import com.dnd.service.AnalysisProcessor;
 import com.dnd.entity.Quest;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonPrimitive;
 import org.springframework.beans.factory.annotation.Autowired;
 import java.util.*;
 import java.util.function.Consumer;
+
 
 /**
  * AI Dungeon Master - основная система с мультиагентной архитектурой

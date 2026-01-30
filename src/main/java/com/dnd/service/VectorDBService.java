@@ -1,5 +1,6 @@
 package com.dnd.service;
 
+import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -20,6 +21,85 @@ public class VectorDBService {
     
     @Autowired
     private JdbcTemplate jdbcTemplate;
+    
+    /**
+     * Автоматически создает таблицу event_embeddings при старте приложения, если её нет
+     */
+    @PostConstruct
+    public void initializeTable() {
+        try {
+            // Проверяем, существует ли таблица
+            String checkTableSql = """
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'event_embeddings'
+                )
+                """;
+            
+            Boolean tableExists = jdbcTemplate.queryForObject(checkTableSql, Boolean.class);
+            
+            if (Boolean.FALSE.equals(tableExists)) {
+                System.out.println("📊 [VectorDBService] Таблица event_embeddings не найдена, создаём...");
+                
+                // Создаем расширение pgvector
+                try {
+                    jdbcTemplate.execute("CREATE EXTENSION IF NOT EXISTS vector");
+                    System.out.println("✅ [VectorDBService] Расширение pgvector создано/проверено");
+                } catch (Exception e) {
+                    System.err.println("⚠️ [VectorDBService] Не удалось создать расширение pgvector: " + e.getMessage());
+                    // Продолжаем, возможно расширение уже существует
+                }
+                
+                // Создаем таблицу
+                String createTableSql = """
+                    CREATE TABLE public.event_embeddings (
+                        id BIGSERIAL PRIMARY KEY,
+                        event_id BIGINT NOT NULL,
+                        campaign_id BIGINT NOT NULL,
+                        embedding vector(1024) NOT NULL,
+                        description TEXT NOT NULL,
+                        quest_context TEXT,
+                        location_context TEXT,
+                        npc_context TEXT,
+                        event_type VARCHAR(100),
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """;
+                
+                jdbcTemplate.execute(createTableSql);
+                System.out.println("✅ [VectorDBService] Таблица event_embeddings создана");
+                
+                // Создаем индексы
+                try {
+                    jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS event_embeddings_event_id_idx ON public.event_embeddings(event_id)");
+                    jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS event_embeddings_campaign_idx ON public.event_embeddings(campaign_id)");
+                    jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS event_embeddings_type_idx ON public.event_embeddings(event_type)");
+                    jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS event_embeddings_created_at_idx ON public.event_embeddings(created_at DESC)");
+                    
+                    // Векторный индекс
+                    jdbcTemplate.execute("""
+                        CREATE INDEX IF NOT EXISTS event_embeddings_vector_idx 
+                        ON public.event_embeddings 
+                        USING ivfflat (embedding vector_cosine_ops) 
+                        WITH (lists = 100)
+                        """);
+                    
+                    System.out.println("✅ [VectorDBService] Индексы для event_embeddings созданы");
+                } catch (Exception e) {
+                    System.err.println("⚠️ [VectorDBService] Ошибка создания индексов: " + e.getMessage());
+                    // Продолжаем, индексы не критичны для работы
+                }
+            } else {
+                System.out.println("✅ [VectorDBService] Таблица event_embeddings уже существует");
+            }
+        } catch (Exception e) {
+            System.err.println("❌ [VectorDBService] Ошибка при инициализации таблицы event_embeddings: " + e.getMessage());
+            e.printStackTrace();
+            // Не прерываем запуск приложения, возможно таблица будет создана вручную
+        }
+    }
     
     /**
      * Сохраняет эмбеддинг события в БД
