@@ -189,6 +189,11 @@ public class VectorDBService {
                                           Integer topK, double minSimilarity) {
         String embeddingStr = arrayToString(queryEmbedding);
         
+        System.out.println("🔍 [VectorDBService] Поиск похожих событий:");
+        System.out.println("   - Campaign ID: " + campaignId);
+        System.out.println("   - Минимальная похожесть: " + minSimilarity);
+        System.out.println("   - Ограничение (topK): " + (topK == null || topK <= 0 ? "нет" : topK));
+        
         // Если topK не указан или <= 0, получаем все релевантные события без ограничения
                if (topK == null || topK <= 0) {
                    String sql = """
@@ -206,8 +211,10 @@ public class VectorDBService {
                        ORDER BY e.embedding <=> ?::vector
                        """;
             
-            return jdbcTemplate.query(sql, new SimilarEventRowMapper(),
+            List<SimilarEvent> results = jdbcTemplate.query(sql, new SimilarEventRowMapper(),
                     embeddingStr, campaignId, embeddingStr, minSimilarity, embeddingStr);
+            System.out.println("✅ [VectorDBService] Найдено событий в БД: " + results.size());
+            return results;
                } else {
                    String sql = """
                        SELECT
@@ -225,8 +232,10 @@ public class VectorDBService {
                        LIMIT ?
                        """;
             
-            return jdbcTemplate.query(sql, new SimilarEventRowMapper(),
+            List<SimilarEvent> results = jdbcTemplate.query(sql, new SimilarEventRowMapper(),
                     embeddingStr, campaignId, embeddingStr, minSimilarity, embeddingStr, topK);
+            System.out.println("✅ [VectorDBService] Найдено событий в БД (с ограничением " + topK + "): " + results.size());
+            return results;
         }
     }
     

@@ -56,7 +56,9 @@ public class RelevantContextBuilder {
             context.setRelevantEvents(relevantEvents);
         } else {
             // Если нет активного квеста, берем события после последнего события квеста
+            System.out.println("🔍 [RAG] Нет активного квеста, используем события после последнего события квеста");
             List<GameState.GameEvent> eventsAfterLastQuest = findEventsAfterLastQuest(gameState.getGameHistory());
+            System.out.println("📊 [RAG] Событий после последнего квеста: " + eventsAfterLastQuest.size() + " из " + gameState.getGameHistory().size());
             context.setRelevantEvents(eventsAfterLastQuest);
         }
         
@@ -115,6 +117,12 @@ public class RelevantContextBuilder {
             throw new IllegalStateException("Ошибка при создании эмбеддинга для RAG поиска: " + e.getMessage(), e);
         }
         
+        // Логирование: начальная статистика
+        System.out.println("🔍 [RAG] Начало поиска релевантных событий");
+        System.out.println("📊 [RAG] Всего событий в истории: " + allEvents.size());
+        System.out.println("📊 [RAG] Минимальная похожесть (MIN_SIMILARITY): " + MIN_SIMILARITY);
+        System.out.println("📊 [RAG] Запрос для RAG: " + queryText.substring(0, Math.min(100, queryText.length())) + "...");
+        
         // Ищем похожие события через RAG (без ограничения по количеству)
         List<VectorDBService.SimilarEvent> ragEvents;
         try {
@@ -124,8 +132,19 @@ public class RelevantContextBuilder {
                 null, // null означает получить все релевантные события без ограничения
                 MIN_SIMILARITY
             );
+            System.out.println("📥 [RAG] Событий найдено векторным поиском: " + ragEvents.size());
         } catch (Exception e) {
             throw new IllegalStateException("Ошибка при поиске в векторной БД: " + e.getMessage(), e);
+        }
+        
+        // Статистика по похожести
+        if (!ragEvents.isEmpty()) {
+            double minSimilarity = ragEvents.stream().mapToDouble(VectorDBService.SimilarEvent::getSimilarity).min().orElse(0.0);
+            double maxSimilarity = ragEvents.stream().mapToDouble(VectorDBService.SimilarEvent::getSimilarity).max().orElse(0.0);
+            double avgSimilarity = ragEvents.stream().mapToDouble(VectorDBService.SimilarEvent::getSimilarity).average().orElse(0.0);
+            System.out.println("📈 [RAG] Статистика похожести: мин=" + String.format("%.3f", minSimilarity) + 
+                             ", макс=" + String.format("%.3f", maxSimilarity) + 
+                             ", средняя=" + String.format("%.3f", avgSimilarity));
         }
         
         // Создаем Map для быстрого поиска событий по описанию
@@ -138,17 +157,31 @@ public class RelevantContextBuilder {
         
         // Собираем релевантные события из RAG результатов (фильтруем по похожести >= MIN_SIMILARITY)
         List<GameState.GameEvent> relevantEvents = new ArrayList<>();
+        int filteredBySimilarity = 0;
+        int notFoundInHistory = 0;
+        int addedFromRAG = 0;
+        
         for (VectorDBService.SimilarEvent ragEvent : ragEvents) {
             if (ragEvent.getSimilarity() >= MIN_SIMILARITY) {
                 GameState.GameEvent matchingEvent = eventsByDescription.get(ragEvent.getDescription());
                 if (matchingEvent != null) {
                     relevantEvents.add(matchingEvent);
+                    addedFromRAG++;
+                } else {
+                    notFoundInHistory++;
                 }
+            } else {
+                filteredBySimilarity++;
             }
         }
         
+        System.out.println("✅ [RAG] Событий прошло фильтрацию по похожести (>= " + MIN_SIMILARITY + "): " + addedFromRAG);
+        System.out.println("❌ [RAG] Событий отсеяно по похожести (< " + MIN_SIMILARITY + "): " + filteredBySimilarity);
+        System.out.println("⚠️ [RAG] Событий не найдено в истории (по описанию): " + notFoundInHistory);
+        
         // Всегда добавляем последние 3 события для контекста
         int recentCount = Math.min(3, allEvents.size());
+        int addedRecent = 0;
         if (recentCount > 0) {
             List<GameState.GameEvent> recentEvents = allEvents.subList(
                 Math.max(0, allEvents.size() - recentCount),
@@ -157,9 +190,12 @@ public class RelevantContextBuilder {
             for (GameState.GameEvent recent : recentEvents) {
                 if (!relevantEvents.contains(recent)) {
                     relevantEvents.add(recent);
+                    addedRecent++;
                 }
             }
         }
+        
+        System.out.println("➕ [RAG] Событий добавлено из последних " + recentCount + ": " + addedRecent);
         
         // Сортируем по времени (исторический порядок: от старых к новым)
         relevantEvents.sort((e1, e2) -> {
@@ -171,6 +207,13 @@ public class RelevantContextBuilder {
             return t1.compareTo(t2); // Старые события первыми
         });
         
+        // Итоговая статистика
+        System.out.println("📊 [RAG] ИТОГО релевантных событий: " + relevantEvents.size());
+        System.out.println("📊 [RAG] Из них из RAG: " + addedFromRAG + ", из последних событий: " + addedRecent);
+        System.out.println("📊 [RAG] Всего отсеяно: " + (filteredBySimilarity + notFoundInHistory) + 
+                         " (по похожести: " + filteredBySimilarity + ", не найдено в истории: " + notFoundInHistory + ")");
+        System.out.println("✅ [RAG] Поиск завершён");
+        
         // Возвращаем все релевантные события в историческом порядке
         return relevantEvents;
     }
@@ -180,7 +223,11 @@ public class RelevantContextBuilder {
      * История загружается в порядке DESC (новые первыми), поэтому ищем с начала
      */
     private List<GameState.GameEvent> findEventsAfterLastQuest(List<GameState.GameEvent> allEvents) {
-        if (allEvents == null || allEvents.isEmpty()) return new ArrayList<>();
+        if (allEvents == null || allEvents.isEmpty()) {
+            System.out.println("⚠️ [RAG] История событий пуста");
+            return new ArrayList<>();
+        }
+        
         int lastQuestEventIndex = -1;
         for (int i = 0; i < allEvents.size(); i++) {
             GameState.GameEvent event = allEvents.get(i);
@@ -189,14 +236,26 @@ public class RelevantContextBuilder {
                 "quest_progress".equals(eventType) ||
                 "quest_started".equals(eventType)) {
                 lastQuestEventIndex = i;
+                System.out.println("📌 [RAG] Найдено событие квеста на позиции " + i + ": " + eventType);
                 break; // Берем первое найденное (самое новое событие квеста)
             }
         }
+        
         // Если не нашли событий квеста, возвращаем все события
-        if (lastQuestEventIndex == -1) return new ArrayList<>(allEvents);
-        if (lastQuestEventIndex == 0) return new ArrayList<>();
+        if (lastQuestEventIndex == -1) {
+            System.out.println("ℹ️ [RAG] Событий квеста не найдено, возвращаем все события");
+            return new ArrayList<>(allEvents);
+        }
+        
+        if (lastQuestEventIndex == 0) {
+            System.out.println("ℹ️ [RAG] Последнее событие квеста - самое первое в истории, возвращаем пустой список");
+            return new ArrayList<>();
+        }
+        
         // Возвращаем все события до последнего события квеста (это события после квеста)
-        return new ArrayList<>(allEvents.subList(0, lastQuestEventIndex));
+        List<GameState.GameEvent> result = new ArrayList<>(allEvents.subList(0, lastQuestEventIndex));
+        System.out.println("✅ [RAG] Возвращаем " + result.size() + " событий после последнего события квеста");
+        return result;
     }
     
     /**
