@@ -5,8 +5,10 @@ import com.dnd.entity.*;
 import com.dnd.repository.CampaignRepository;
 import com.dnd.service.EmbeddingService;
 import com.dnd.service.VectorDBService;
+import org.hibernate.Hibernate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -34,6 +36,7 @@ public class RelevantContextBuilder {
      * Строит релевантный контекст для генерации сообщения
      * Использует RAG для семантического поиска релевантных событий
      */
+    @Transactional(readOnly = true)
     public RelevantContext buildRelevantContext(GameState gameState, String campaignId) {
         RelevantContext context = new RelevantContext();
         
@@ -280,7 +283,6 @@ public class RelevantContextBuilder {
     /**
      * Находит NPC в конкретной локации
      */
-    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     private List<Map<String, Object>> findNPCsInLocation(String campaignId, String locationName) {
         List<Map<String, Object>> npcs = new ArrayList<>();
         
@@ -290,20 +292,20 @@ public class RelevantContextBuilder {
                 return npcs;
             }
             
-            // Явно загружаем коллекцию npcs, чтобы избежать LazyInitializationException
-            campaign.getNpcs().size(); // Инициализируем коллекцию
+            // Явно загружаем коллекцию npcs через Hibernate.initialize()
+            Hibernate.initialize(campaign.getNpcs());
             
             for (NPC npc : campaign.getNpcs()) {
                 // Явно загружаем связанную локацию
-                if (npc.getLocation() != null) {
-                    npc.getLocation().getName(); // Инициализируем прокси
-                    if (npc.getLocation().getName().equalsIgnoreCase(locationName)) {
-                        Map<String, Object> npcMap = new HashMap<>();
-                        npcMap.put("name", npc.getName());
-                        npcMap.put("description", npc.getDescription());
-                        npcMap.put("home_location", npc.getHomeLocation());
-                        npcs.add(npcMap);
-                    }
+                Hibernate.initialize(npc.getLocation());
+                if (npc.getLocation() != null && 
+                    npc.getLocation().getName() != null &&
+                    npc.getLocation().getName().equalsIgnoreCase(locationName)) {
+                    Map<String, Object> npcMap = new HashMap<>();
+                    npcMap.put("name", npc.getName());
+                    npcMap.put("description", npc.getDescription());
+                    npcMap.put("home_location", npc.getHomeLocation());
+                    npcs.add(npcMap);
                 }
             }
         } catch (Exception e) {
@@ -317,7 +319,6 @@ public class RelevantContextBuilder {
     /**
      * Находит локации рядом с текущей
      */
-    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     private List<Map<String, Object>> findLocationsNearby(String campaignId, String currentLocation) {
         // Упрощенная версия - возвращаем все открытые локации
         List<Map<String, Object>> locations = new ArrayList<>();
@@ -328,8 +329,8 @@ public class RelevantContextBuilder {
                 return locations;
             }
             
-            // Явно загружаем коллекцию locations, чтобы избежать LazyInitializationException
-            campaign.getLocations().size(); // Инициализируем коллекцию
+            // Явно загружаем коллекцию locations через Hibernate.initialize()
+            Hibernate.initialize(campaign.getLocations());
             
             for (Location loc : campaign.getLocations()) {
                 if (loc.getDiscovered() != null && loc.getDiscovered()) {
