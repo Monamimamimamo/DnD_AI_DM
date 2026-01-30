@@ -53,11 +53,8 @@ public class Main {
             System.out.println("  ✅ Персонаж " + character.getName() + " добавлен в кампанию");
             System.out.println();
             
-            // Генерируем ситуацию
-            System.out.println("=== СИТУАЦИЯ ===");
-            String situation = dm.generateSituation(character.getName(), 
-                message -> System.out.println("  " + message));
-            System.out.println("DM: " + situation);
+            // Продолжение истории теперь генерируется автоматически после каждого действия
+            System.out.println("Готов к действиям! Отправьте действие, чтобы начать игру.");
             System.out.println();
             
             // Интерактивный цикл
@@ -117,16 +114,6 @@ public class Main {
                         System.out.println("=".repeat(50));
                         System.out.println("\nСпасибо за игру! Приключение подошло к концу.");
                         break;
-                    }
-                    
-                    // Если требуется новое действие
-                    if (result.getOrDefault("requires_new_action", false).equals(true)) {
-                        System.out.println();
-                        System.out.println("=== СИТУАЦИЯ ===");
-                        situation = dm.generateSituation(character.getName(), 
-                            message -> System.out.println("  " + message));
-                        System.out.println("DM: " + situation);
-                        System.out.println();
                     }
                     
                 } catch (Exception e) {

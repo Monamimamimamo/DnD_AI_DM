@@ -28,10 +28,10 @@ public class LocalLLMClient {
         this.config = config;
         this.ollamaBaseUrl = ollamaBaseUrl != null ? ollamaBaseUrl : DEFAULT_OLLAMA_BASE_URL;
         this.httpClient = new OkHttpClient.Builder()
-            .connectTimeout(10, TimeUnit.SECONDS)
-            .readTimeout(60, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
-            .callTimeout(600, TimeUnit.SECONDS) 
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(300, TimeUnit.SECONDS) // 5 минут для больших промптов (генерация мира, квестов)
+            .writeTimeout(60, TimeUnit.SECONDS)
+            .callTimeout(900, TimeUnit.SECONDS) // 15 минут общий таймаут для всего запроса
             .build();
         initializeModel();
     }

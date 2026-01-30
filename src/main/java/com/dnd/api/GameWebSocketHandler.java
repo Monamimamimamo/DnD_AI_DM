@@ -141,11 +141,8 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                 }
                 
                 if (isStarted) {
-                    // Если кампания уже начата, отправляем текущую ситуацию
-                    if (characters != null && !characters.isEmpty()) {
-                        String charName = (String) characters.get(0).get("name");
-                        generateAndBroadcastSituation(campaignId, charName);
-                    }
+                    // Кампания уже начата - игроки могут отправлять действия
+                    welcomeMessage.put("message", "Кампания уже начата. Отправьте действие для продолжения истории.");
                 } else {
                     welcomeMessage.put("message", "Кампания загружена. Дождитесь подключения игроков и нажмите 'Начать кампанию'");
                 }
@@ -238,19 +235,6 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                     }
                 }
                 
-                // Если кампания начата, отправляем текущую ситуацию
-                if (campaignSession.getStatus() == CampaignSession.CampaignStatus.STARTED) {
-                    if (characterName != null) {
-                        generateAndBroadcastSituation(campaignId, characterName);
-                    } else if (gameStatus.get("characters") != null) {
-                        @SuppressWarnings("unchecked")
-                        List<Map<String, Object>> characters = (List<Map<String, Object>>) gameStatus.get("characters");
-                        if (characters != null && !characters.isEmpty()) {
-                            String firstCharName = (String) characters.get(0).get("name");
-                            generateAndBroadcastSituation(campaignId, firstCharName);
-                        }
-                    }
-                }
                 
                 // Отправляем список подключенных игроков
                 Map<String, Object> playersList = new HashMap<>();
@@ -608,39 +592,6 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
         // Отправляем всем игрокам
         broadcastToCampaign(campaignId, response, null);
         
-        // Если требуется новое действие, генерируем новую ситуацию для всех
-        if (result.getOrDefault("requires_new_action", false).equals(true)) {
-            generateAndBroadcastSituation(campaignId, characterName);
-        }
-    }
-    
-    private void generateAndBroadcastSituation(String campaignId, String characterName) {
-        try {
-            List<String> progressMessages = new ArrayList<>();
-            String situation = campaignService.generateSituation(
-                campaignId, 
-                characterName, 
-                msg -> progressMessages.add(msg)
-            );
-            
-            Map<String, Object> response = new HashMap<>();
-            response.put("type", "situation");
-            response.put("situation", situation);
-            response.put("current_location", campaignService.getGameStatus(campaignId).get("current_location"));
-            response.put("progress", progressMessages);
-            
-            // Отправляем всем игрокам
-            broadcastToCampaign(campaignId, response, null);
-            
-        } catch (Exception e) {
-            System.err.println("❌ Ошибка генерации ситуации: " + e.getMessage());
-            e.printStackTrace();
-            
-            Map<String, Object> error = new HashMap<>();
-            error.put("type", "error");
-            error.put("message", "Не удалось сгенерировать ситуацию: " + e.getMessage());
-            broadcastToCampaign(campaignId, error, null);
-        }
     }
     
     /**

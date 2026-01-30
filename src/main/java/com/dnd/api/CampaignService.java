@@ -107,21 +107,6 @@ public class CampaignService {
     }
     
     /**
-     * Сгенерировать ситуацию
-     */
-    public String generateSituation(String campaignId, String characterName, Consumer<String> progressCallback) {
-        GameState game = gameManager.loadGame(campaignId);
-        if (game == null) {
-            throw new IllegalArgumentException("Кампания не найдена: " + campaignId);
-        }
-        gameManager.setCurrentGame(game);
-        dungeonMasterAI.setCurrentGame(game);
-        String situation = dungeonMasterAI.generateSituation(characterName, progressCallback);
-        gameManager.saveGame();
-        return situation;
-    }
-    
-    /**
      * Получить статус игры
      */
     public Map<String, Object> getGameStatus(String campaignId) {

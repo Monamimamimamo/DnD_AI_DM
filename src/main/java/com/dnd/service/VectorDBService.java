@@ -97,32 +97,53 @@ public class VectorDBService {
      * 
      * @param queryEmbedding Вектор запроса
      * @param campaignId ID кампании для фильтрации
-     * @param topK Количество результатов
+     * @param topK Количество результатов (null или <= 0 означает без ограничения)
      * @param minSimilarity Минимальная похожесть (0.0 - 1.0)
      * @return Список найденных событий с оценкой похожести
      */
     public List<SimilarEvent> searchSimilar(float[] queryEmbedding, Long campaignId, 
-                                          int topK, double minSimilarity) {
-        String sql = """
-            SELECT 
-                e.event_id,
-                e.description,
-                e.quest_context,
-                e.location_context,
-                e.npc_context,
-                e.event_type,
-                1 - (e.embedding <=> ?::vector) as similarity
-            FROM event_embeddings e
-            WHERE e.campaign_id = ?
-            AND 1 - (e.embedding <=> ?::vector) >= ?
-            ORDER BY e.embedding <=> ?::vector
-            LIMIT ?
-            """;
-        
+                                          Integer topK, double minSimilarity) {
         String embeddingStr = arrayToString(queryEmbedding);
         
-        return jdbcTemplate.query(sql, new SimilarEventRowMapper(),
-                embeddingStr, campaignId, embeddingStr, minSimilarity, embeddingStr, topK);
+        // Если topK не указан или <= 0, получаем все релевантные события без ограничения
+        if (topK == null || topK <= 0) {
+            String sql = """
+                SELECT 
+                    e.event_id,
+                    e.description,
+                    e.quest_context,
+                    e.location_context,
+                    e.npc_context,
+                    e.event_type,
+                    1 - (e.embedding <=> ?::vector) as similarity
+                FROM event_embeddings e
+                WHERE e.campaign_id = ?
+                AND 1 - (e.embedding <=> ?::vector) >= ?
+                ORDER BY e.embedding <=> ?::vector
+                """;
+            
+            return jdbcTemplate.query(sql, new SimilarEventRowMapper(),
+                    embeddingStr, campaignId, embeddingStr, minSimilarity, embeddingStr);
+        } else {
+            String sql = """
+                SELECT 
+                    e.event_id,
+                    e.description,
+                    e.quest_context,
+                    e.location_context,
+                    e.npc_context,
+                    e.event_type,
+                    1 - (e.embedding <=> ?::vector) as similarity
+                FROM event_embeddings e
+                WHERE e.campaign_id = ?
+                AND 1 - (e.embedding <=> ?::vector) >= ?
+                ORDER BY e.embedding <=> ?::vector
+                LIMIT ?
+                """;
+            
+            return jdbcTemplate.query(sql, new SimilarEventRowMapper(),
+                    embeddingStr, campaignId, embeddingStr, minSimilarity, embeddingStr, topK);
+        }
     }
     
     /**
@@ -132,13 +153,13 @@ public class VectorDBService {
      * @param campaignId ID кампании
      * @param eventType Фильтр по типу события (null = все типы)
      * @param location Фильтр по локации (null = все локации)
-     * @param topK Количество результатов
+     * @param topK Количество результатов (null или <= 0 означает без ограничения)
      * @param minSimilarity Минимальная похожесть
      * @return Список найденных событий
      */
     public List<SimilarEvent> searchSimilarWithFilters(float[] queryEmbedding, Long campaignId,
                                                       String eventType, String location,
-                                                      int topK, double minSimilarity) {
+                                                      Integer topK, double minSimilarity) {
         StringBuilder sql = new StringBuilder("""
             SELECT 
                 e.event_id,
@@ -170,9 +191,14 @@ public class VectorDBService {
             params.add("%" + location + "%");
         }
         
-        sql.append(" ORDER BY e.embedding <=> ?::vector LIMIT ?");
+        sql.append(" ORDER BY e.embedding <=> ?::vector");
         params.add(embeddingStr);
-        params.add(topK);
+        
+        // Добавляем LIMIT только если topK указан и > 0
+        if (topK != null && topK > 0) {
+            sql.append(" LIMIT ?");
+            params.add(topK);
+        }
         
         return jdbcTemplate.query(sql.toString(), new SimilarEventRowMapper(), params.toArray());
     }

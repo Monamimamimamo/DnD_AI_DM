@@ -214,17 +214,6 @@ public class GameApiController {
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
             }
 
-            // Автоматически генерируем новую ситуацию, если требуется
-            if (result.getOrDefault("requires_new_action", false).equals(true)) {
-                try {
-                    String newSituation = dm.generateSituation(characterName, msg -> {});
-                    result.put("new_situation", newSituation);
-                } catch (Exception e) {
-                    // Игнорируем ошибки генерации ситуации
-                    System.err.println("Не удалось сгенерировать новую ситуацию: " + e.getMessage());
-                }
-            }
-
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.putAll(result);

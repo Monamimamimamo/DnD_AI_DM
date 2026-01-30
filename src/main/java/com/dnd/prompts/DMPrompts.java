@@ -5,14 +5,7 @@ import java.util.Map;
 /**
  * Фасад для всех промптов Dungeon Master
  * Делегирует вызовы к специализированным классам промптов
- * 
- * @deprecated Используйте напрямую специализированные классы:
- * - SystemPrompts для системных промптов
- * - WorldPrompts для генерации мира и квестов
- * - SituationPrompts для генерации ситуаций
- * - ActionPrompts для парсинга действий
  */
-@Deprecated
 public class DMPrompts {
     
     // ========== Системные промпты ==========
@@ -56,20 +49,18 @@ public class DMPrompts {
     
     // ========== Промпты для генерации ситуаций ==========
     
-    /**
-     * Промпт для генерации ситуации, требующей действия
-     */
-    public static String getSituationPrompt(String previousSituation, String characterName, 
-                                           String currentLocation, Map<String, Object> questInfo) {
-        return SituationPrompts.getSituationPrompt(previousSituation, characterName, currentLocation, questInfo, null);
-    }
+
+    
+    // ========== Промпты для продолжения истории ==========
     
     /**
-     * Промпт для генерации ситуации с релевантным контекстом
+     * Промпт для генерации продолжения истории после действия игрока
      */
-    public static String getSituationPrompt(String previousSituation, String characterName, 
-                                           String currentLocation, Map<String, Object> questInfo, String relevantContext) {
-        return SituationPrompts.getSituationPrompt(previousSituation, characterName, currentLocation, questInfo, relevantContext);
+    public static String getStoryContinuationPrompt(String playerAction, String dmResponse, 
+                                                   String characterName, String characterClass, String characterRace,
+                                                   String currentLocation,
+                                                   Map<String, Object> questInfo, String relevantContext) {
+        return StoryContinuationPrompts.getStoryContinuationPrompt(playerAction, dmResponse, characterName, characterClass, characterRace, currentLocation, questInfo, relevantContext);
     }
     
     // ========== Промпты для парсинга действий ==========
