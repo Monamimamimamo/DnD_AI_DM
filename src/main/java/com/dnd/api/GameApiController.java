@@ -155,14 +155,34 @@ public class GameApiController {
             
             var gameStatus = dm.getGameStatus();
             @SuppressWarnings("unchecked")
-            var characters = (List<Map<String, Object>>) gameStatus.get("characters");
+            List<Character> characters = (List<Character>) gameStatus.get("characters");
             
             if (characters != null) {
-                for (Map<String, Object> charData : characters) {
-                    if (name.equalsIgnoreCase((String) charData.get("name"))) {
+                for (Character character : characters) {
+                    if (name.equalsIgnoreCase(character.getName())) {
                         Map<String, Object> response = new HashMap<>();
                         response.put("success", true);
-                        response.put("character", charData);
+                        // Преобразуем Character в Map для JSON ответа
+                        Map<String, Object> charMap = new HashMap<>();
+                        charMap.put("name", character.getName());
+                        charMap.put("class", character.getCharacterClass().toString());
+                        charMap.put("race", character.getRace().toString());
+                        charMap.put("level", character.getLevel());
+                        charMap.put("hit_points", character.getHitPoints());
+                        charMap.put("max_hit_points", character.getMaxHitPoints());
+                        charMap.put("armor_class", character.getArmorClass());
+                        charMap.put("speed", character.getSpeed());
+                        charMap.put("ability_scores", Map.of(
+                            "strength", character.getAbilityScores().getStrength(),
+                            "dexterity", character.getAbilityScores().getDexterity(),
+                            "constitution", character.getAbilityScores().getConstitution(),
+                            "intelligence", character.getAbilityScores().getIntelligence(),
+                            "wisdom", character.getAbilityScores().getWisdom(),
+                            "charisma", character.getAbilityScores().getCharisma()
+                        ));
+                        charMap.put("background", character.getBackground());
+                        charMap.put("alignment", character.getAlignment());
+                        response.put("character", charMap);
                         return ResponseEntity.ok(response);
                     }
                 }

@@ -706,7 +706,8 @@ public class DungeonMasterAI {
         result.put("game_mode", currentGame.getGameMode());
         result.put("recent_events", currentGame.getRecentContext(3));
         result.put("quest", questInfo);
-        result.put("characters", currentGame.getCharacters());
+        result.put("main_quest", questInfo); // Добавляем также main_quest для совместимости
+        result.put("characters", currentGame.getCharacters()); // Возвращаем List<Character> напрямую
         result.put("world", currentGame.getWorld());
         return result;
     }

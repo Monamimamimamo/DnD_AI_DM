@@ -107,19 +107,14 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                 welcomeMessage.put("main_quest", gameStatus.get("quest"));
                 welcomeMessage.put("world", gameStatus.get("world")); // Добавляем информацию о мире
                 
-                // Преобразуем объекты Character в Map, если требуется
-                List<Map<String, Object>> characters = new ArrayList<>();
-                for (Object obj : (List<?>) gameStatus.get("characters")) {
-                    if (obj instanceof Character) {
-                        characters.add(characterToMap((Character) obj));
-                    } else if (obj instanceof Map) {
-                        characters.add((Map<String, Object>) obj);
-                    } else {
-                        throw new IllegalArgumentException("Неизвестный тип объекта в списке персонажей: " + obj.getClass().getName());
+                // Преобразуем Character в Map для отправки в JSON
+                @SuppressWarnings("unchecked")
+                List<Character> charactersList = (List<Character>) gameStatus.get("characters");
+                if (charactersList != null && !charactersList.isEmpty()) {
+                    List<Map<String, Object>> characters = new ArrayList<>();
+                    for (Character character : charactersList) {
+                        characters.add(characterToMap(character));
                     }
-                }
-
-                if (characters != null && !characters.isEmpty()) {
                     welcomeMessage.put("characters", characters);
                 }
                 
@@ -207,11 +202,11 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                     welcomeMessage.put("character_name", characterName);
                     // Находим информацию о персонаже
                     @SuppressWarnings("unchecked")
-                    List<Map<String, Object>> characters = (List<Map<String, Object>>) gameStatus.get("characters");
+                    List<Character> characters = (List<Character>) gameStatus.get("characters");
                     if (characters != null) {
-                        for (Map<String, Object> charData : characters) {
-                            if (characterName.equals(charData.get("name"))) {
-                                welcomeMessage.put("character", charData);
+                        for (Character character : characters) {
+                            if (characterName.equals(character.getName())) {
+                                welcomeMessage.put("character", characterToMap(character));
                                 break;
                             }
                         }
@@ -731,10 +726,23 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
     private Map<String, Object> characterToMap(Character character) {
         Map<String, Object> map = new HashMap<>();
         map.put("name", character.getName());
-        map.put("class", character.getCharacterClass());
-        map.put("race", character.getRace());
+        map.put("class", character.getCharacterClass().toString());
+        map.put("race", character.getRace().toString());
         map.put("level", character.getLevel());
-        // Добавьте другие поля, если необходимо
+        map.put("hit_points", character.getHitPoints());
+        map.put("max_hit_points", character.getMaxHitPoints());
+        map.put("armor_class", character.getArmorClass());
+        map.put("speed", character.getSpeed());
+        map.put("ability_scores", Map.of(
+            "strength", character.getAbilityScores().getStrength(),
+            "dexterity", character.getAbilityScores().getDexterity(),
+            "constitution", character.getAbilityScores().getConstitution(),
+            "intelligence", character.getAbilityScores().getIntelligence(),
+            "wisdom", character.getAbilityScores().getWisdom(),
+            "charisma", character.getAbilityScores().getCharisma()
+        ));
+        map.put("background", character.getBackground());
+        map.put("alignment", character.getAlignment());
         return map;
     }
 }

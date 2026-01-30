@@ -41,6 +41,16 @@ public class RelevantContextBuilder {
         Map<String, Object> mainQuest = gameState.getMainQuest();
         String currentQuestStage = gameState.getCurrentQuestStage();
         
+        // Логирование для отладки
+        System.out.println("🔍 [RelevantContextBuilder] Проверка квеста:");
+        System.out.println("   - mainQuest: " + (mainQuest != null ? "есть" : "null"));
+        if (mainQuest != null) {
+            System.out.println("   - title: " + mainQuest.get("title"));
+            System.out.println("   - stages: " + mainQuest.get("stages"));
+            System.out.println("   - current_stage_index: " + mainQuest.get("current_stage_index"));
+        }
+        System.out.println("   - currentQuestStage: " + currentQuestStage);
+        
         if (mainQuest != null && currentQuestStage != null) {
             context.setActiveQuest(mainQuest);
             context.setCurrentQuestStage(currentQuestStage);
@@ -56,6 +66,15 @@ public class RelevantContextBuilder {
             context.setRelevantEvents(relevantEvents);
         } else {
             // Если нет активного квеста, берем события после последнего события квеста
+            if (mainQuest == null) {
+                System.out.println("⚠️ [RelevantContextBuilder] mainQuest = null");
+            }
+            if (currentQuestStage == null) {
+                System.out.println("⚠️ [RelevantContextBuilder] currentQuestStage = null");
+                if (mainQuest != null) {
+                    System.out.println("   Возможные причины: stages = null или current_stage_index вне диапазона");
+                }
+            }
             System.out.println("🔍 [RAG] Нет активного квеста, используем события после последнего события квеста");
             List<GameState.GameEvent> eventsAfterLastQuest = findEventsAfterLastQuest(gameState.getGameHistory());
             System.out.println("📊 [RAG] Событий после последнего квеста: " + eventsAfterLastQuest.size() + " из " + gameState.getGameHistory().size());
@@ -261,6 +280,7 @@ public class RelevantContextBuilder {
     /**
      * Находит NPC в конкретной локации
      */
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     private List<Map<String, Object>> findNPCsInLocation(String campaignId, String locationName) {
         List<Map<String, Object>> npcs = new ArrayList<>();
         
@@ -270,18 +290,25 @@ public class RelevantContextBuilder {
                 return npcs;
             }
             
+            // Явно загружаем коллекцию npcs, чтобы избежать LazyInitializationException
+            campaign.getNpcs().size(); // Инициализируем коллекцию
+            
             for (NPC npc : campaign.getNpcs()) {
-                if (npc.getLocation() != null && 
-                    npc.getLocation().getName().equalsIgnoreCase(locationName)) {
-                    Map<String, Object> npcMap = new HashMap<>();
-                    npcMap.put("name", npc.getName());
-                    npcMap.put("description", npc.getDescription());
-                    npcMap.put("home_location", npc.getHomeLocation());
-                    npcs.add(npcMap);
+                // Явно загружаем связанную локацию
+                if (npc.getLocation() != null) {
+                    npc.getLocation().getName(); // Инициализируем прокси
+                    if (npc.getLocation().getName().equalsIgnoreCase(locationName)) {
+                        Map<String, Object> npcMap = new HashMap<>();
+                        npcMap.put("name", npc.getName());
+                        npcMap.put("description", npc.getDescription());
+                        npcMap.put("home_location", npc.getHomeLocation());
+                        npcs.add(npcMap);
+                    }
                 }
             }
         } catch (Exception e) {
             System.err.println("Ошибка при поиске NPC в локации: " + e.getMessage());
+            e.printStackTrace();
         }
         
         return npcs;
@@ -290,6 +317,7 @@ public class RelevantContextBuilder {
     /**
      * Находит локации рядом с текущей
      */
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     private List<Map<String, Object>> findLocationsNearby(String campaignId, String currentLocation) {
         // Упрощенная версия - возвращаем все открытые локации
         List<Map<String, Object>> locations = new ArrayList<>();
@@ -299,6 +327,9 @@ public class RelevantContextBuilder {
             if (campaign == null) {
                 return locations;
             }
+            
+            // Явно загружаем коллекцию locations, чтобы избежать LazyInitializationException
+            campaign.getLocations().size(); // Инициализируем коллекцию
             
             for (Location loc : campaign.getLocations()) {
                 if (loc.getDiscovered() != null && loc.getDiscovered()) {
@@ -311,6 +342,7 @@ public class RelevantContextBuilder {
             }
         } catch (Exception e) {
             System.err.println("Ошибка при поиске локаций: " + e.getMessage());
+            e.printStackTrace();
         }
         
         return locations;

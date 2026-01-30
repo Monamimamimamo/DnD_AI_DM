@@ -9,6 +9,7 @@ import com.dnd.game_state.GameState;
 import com.dnd.repository.CampaignRepository;
 import com.dnd.repository.CharacterRepository;
 import com.dnd.repository.GameEventRepository;
+import com.dnd.repository.QuestRepository;
 import com.dnd.repository.WorldRepository;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -42,6 +43,9 @@ public class GameStateService {
     
     @Autowired
     private WorldRepository worldRepository;
+    
+    @Autowired
+    private QuestRepository questRepository;
     
     private static final Gson gson = new GsonBuilder().create();
     
@@ -213,6 +217,9 @@ public class GameStateService {
         
         // Синхронизируем мир
         syncWorld(gameState, campaign);
+        
+        // Синхронизируем квест
+        syncQuest(gameState, campaign);
         
         // Обновляем время обновления
         campaign.setUpdatedAt(LocalDateTime.now());
@@ -400,5 +407,82 @@ public class GameStateService {
         }
         
         worldRepository.save(world);
+    }
+    
+    /**
+     * Синхронизирует квест из GameState в Campaign
+     */
+    private void syncQuest(GameState gameState, Campaign campaign) {
+        Map<String, Object> mainQuestMap = gameState.getMainQuest();
+        
+        if (mainQuestMap == null || mainQuestMap.isEmpty()) {
+            // Если квеста нет в GameState, удаляем основной квест из Campaign
+            Optional<Quest> existingMainQuest = campaign.getQuests().stream()
+                .filter(q -> "main".equals(q.getQuestType()))
+                .findFirst();
+            if (existingMainQuest.isPresent()) {
+                Quest quest = existingMainQuest.get();
+                campaign.getQuests().remove(quest);
+                questRepository.delete(quest);
+            }
+            return;
+        }
+        
+        // Ищем существующий основной квест
+        Optional<Quest> existingMainQuest = campaign.getQuests().stream()
+            .filter(q -> "main".equals(q.getQuestType()))
+            .findFirst();
+        
+        Quest quest;
+        if (existingMainQuest.isPresent()) {
+            quest = existingMainQuest.get();
+        } else {
+            // Создаем новый квест
+            quest = new Quest();
+            quest.setCampaign(campaign);
+            quest.setQuestType("main");
+            campaign.getQuests().add(quest);
+        }
+        
+        // Обновляем данные квеста
+        quest.setTitle((String) mainQuestMap.getOrDefault("title", ""));
+        quest.setGoal((String) mainQuestMap.getOrDefault("goal", ""));
+        quest.setDescription((String) mainQuestMap.getOrDefault("description", ""));
+        
+        // Обновляем stages (JSON массив строк)
+        Object stagesObj = mainQuestMap.get("stages");
+        if (stagesObj instanceof List) {
+            @SuppressWarnings("unchecked")
+            List<String> stages = (List<String>) stagesObj;
+            quest.setStages(gson.toJson(stages));
+        } else if (stagesObj != null) {
+            quest.setStages(stagesObj.toString());
+        }
+        
+        // Обновляем current_stage_index
+        Object stageIndexObj = mainQuestMap.get("current_stage_index");
+        if (stageIndexObj instanceof Number) {
+            quest.setCurrentStageIndex(((Number) stageIndexObj).intValue());
+        } else if (stageIndexObj != null) {
+            try {
+                quest.setCurrentStageIndex(Integer.parseInt(stageIndexObj.toString()));
+            } catch (NumberFormatException e) {
+                quest.setCurrentStageIndex(0);
+            }
+        } else {
+            quest.setCurrentStageIndex(0);
+        }
+        
+        // Обновляем completed
+        Object completedObj = mainQuestMap.get("completed");
+        if (completedObj instanceof Boolean) {
+            quest.setCompleted((Boolean) completedObj);
+        } else if (completedObj != null) {
+            quest.setCompleted(Boolean.parseBoolean(completedObj.toString()));
+        } else {
+            quest.setCompleted(false);
+        }
+        
+        questRepository.save(quest);
     }
 }
