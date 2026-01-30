@@ -40,7 +40,7 @@ public class GameContext {
         
         /**
          * После действия игрока
-         * Допустимые типы: ACTION_RESULT, CONSEQUENCE, QUEST_PROGRESSION, REVELATION
+         * Допустимые типы: ACTION_RESULT, CONSEQUENCE, QUEST_PROGRESSION, SITUATION_CONTINUATION, REVELATION
          */
         AFTER_ACTION,
         

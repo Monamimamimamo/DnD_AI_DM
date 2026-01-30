@@ -60,14 +60,15 @@ public class MessageTypeValidator {
             }
         }
         
-        // 5. После действия игрока должен быть ACTION_RESULT или CONSEQUENCE
+        // 5. После действия игрока должен быть ACTION_RESULT, CONSEQUENCE, QUEST_PROGRESSION или SITUATION_CONTINUATION
         if (context.getCurrentState() == GameContext.ContextState.AFTER_ACTION) {
             if (messageType != MessageType.ACTION_RESULT && 
                 messageType != MessageType.CONSEQUENCE &&
                 messageType != MessageType.QUEST_PROGRESSION &&
+                messageType != MessageType.SITUATION_CONTINUATION &&
                 messageType != MessageType.REVELATION &&
                 messageType != MessageType.SYSTEM) {
-                warnings.add("После действия игрока ожидается ACTION_RESULT или CONSEQUENCE");
+                warnings.add("После действия игрока ожидается ACTION_RESULT, CONSEQUENCE, QUEST_PROGRESSION или SITUATION_CONTINUATION");
             }
         }
         
@@ -121,6 +122,7 @@ public class MessageTypeValidator {
                 return messageType == MessageType.ACTION_RESULT ||
                        messageType == MessageType.CONSEQUENCE ||
                        messageType == MessageType.QUEST_PROGRESSION ||
+                       messageType == MessageType.SITUATION_CONTINUATION ||
                        messageType == MessageType.REVELATION ||
                        messageType == MessageType.SYSTEM;
                        
