@@ -19,7 +19,7 @@ public class GameOrchestrator {
         
         // Создаем ActionParser с отдельным клиентом (использует тот же Ollama URL)
         LocalLLMClient.LocalLLMConfig parserConfig = new LocalLLMClient.LocalLLMConfig(
-            "llama3.1:8b", 0.0, 400
+            "mistral:7b", 0.0, 400
         );
         // Используем тот же базовый URL, что и у dmClient
         String ollamaUrl = System.getenv("OLLAMA_BASE_URL");
