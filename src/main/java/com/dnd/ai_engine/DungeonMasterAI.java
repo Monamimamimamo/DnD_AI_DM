@@ -886,36 +886,7 @@ public class DungeonMasterAI {
         return json;
     }
     
-    /**
-     * Извлекает строковое значение из JsonElement, обрабатывая как строки, так и массивы
-     */
-    private String extractStringValue(com.google.gson.JsonElement element) {
-        if (element == null || element.isJsonNull()) {
-            return "";
-        }
-        if (element.isJsonPrimitive() && element.getAsJsonPrimitive().isString()) {
-            return element.getAsString();
-        }
-        if (element.isJsonArray()) {
-            // Если это массив, берем первый элемент или объединяем все элементы
-            com.google.gson.JsonArray array = element.getAsJsonArray();
-            if (array.size() == 0) {
-                return "";
-            }
-            if (array.size() == 1) {
-                return array.get(0).getAsString();
-            }
-            // Если несколько элементов, объединяем их через пробел
-            StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < array.size(); i++) {
-                if (i > 0) sb.append(" ");
-                sb.append(array.get(i).getAsString());
-            }
-            return sb.toString();
-        }
-        // Если это объект или другой тип, преобразуем в строку
-        return element.toString();
-    }
+
     private Map<String, Object> extractJsonFromResponseWithSituation(String response) {
         JsonObject jsonObj = extractJsonObject(response);
         
@@ -954,41 +925,52 @@ public class DungeonMasterAI {
     
     private Map<String, Object> extractWorldFromResponse(String response) {
         JsonObject jsonObj = extractJsonObject(response);
-        
-        Map<String, Object> result = new HashMap<>();
-        result.put("world_description", extractStringValue(jsonObj.get("world_description")));
-        
-        if (jsonObj.has("main_location")) {
-            JsonObject loc = jsonObj.getAsJsonObject("main_location");
-            Map<String, Object> location = new HashMap<>();
-            if (loc.has("name")) location.put("name", extractStringValue(loc.get("name")));
-            if (loc.has("description")) location.put("description", extractStringValue(loc.get("description")));
-            if (loc.has("important_npcs")) {
-                List<String> npcs = new ArrayList<>();
-                loc.getAsJsonArray("important_npcs").forEach(e -> npcs.add(e.getAsString()));
-                location.put("important_npcs", npcs);
+        // Просто преобразуем весь JSON объект в Map
+        return jsonObjectToMap(jsonObj);
+    }
+    
+    /**
+     * Преобразует JsonObject в Map<String, Object>
+     */
+    private Map<String, Object> jsonObjectToMap(JsonObject jsonObj) {
+        Map<String, Object> map = new HashMap<>();
+        for (Map.Entry<String, JsonElement> entry : jsonObj.entrySet()) {
+            String key = entry.getKey();
+            JsonElement value = entry.getValue();
+            
+            if (value.isJsonNull()) {
+                map.put(key, null);
+            } else if (value.isJsonPrimitive()) {
+                JsonPrimitive primitive = value.getAsJsonPrimitive();
+                if (primitive.isString()) {
+                    map.put(key, primitive.getAsString());
+                } else if (primitive.isNumber()) {
+                    map.put(key, primitive.getAsNumber());
+                } else if (primitive.isBoolean()) {
+                    map.put(key, primitive.getAsBoolean());
+                }
+            } else if (value.isJsonArray()) {
+                List<Object> list = new ArrayList<>();
+                value.getAsJsonArray().forEach(e -> {
+                    if (e.isJsonObject()) {
+                        list.add(jsonObjectToMap(e.getAsJsonObject()));
+                    } else if (e.isJsonPrimitive()) {
+                        JsonPrimitive p = e.getAsJsonPrimitive();
+                        if (p.isString()) {
+                            list.add(p.getAsString());
+                        } else if (p.isNumber()) {
+                            list.add(p.getAsNumber());
+                        } else if (p.isBoolean()) {
+                            list.add(p.getAsBoolean());
+                        }
+                    }
+                });
+                map.put(key, list);
+            } else if (value.isJsonObject()) {
+                map.put(key, jsonObjectToMap(value.getAsJsonObject()));
             }
-            if (loc.has("problems")) {
-                List<String> problems = new ArrayList<>();
-                loc.getAsJsonArray("problems").forEach(e -> problems.add(e.getAsString()));
-                location.put("problems", problems);
-            }
-            if (loc.has("points_of_interest")) {
-                List<String> points = new ArrayList<>();
-                loc.getAsJsonArray("points_of_interest").forEach(e -> points.add(e.getAsString()));
-                location.put("points_of_interest", points);
-            }
-            result.put("main_location", location);
         }
-        
-        if (jsonObj.has("atmosphere")) {
-            result.put("atmosphere", extractStringValue(jsonObj.get("atmosphere")));
-        }
-        if (jsonObj.has("history")) {
-            result.put("history", extractStringValue(jsonObj.get("history")));
-        }
-        
-        return result;
+        return map;
     }
     
     

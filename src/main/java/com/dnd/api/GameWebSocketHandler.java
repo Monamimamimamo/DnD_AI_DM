@@ -417,8 +417,17 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
             msg -> progressMessages.add(msg)
         );
         
-        // Начальная ситуация уже включена в результат startCampaign
-        String initialSituation = (String) campaign.get("initial_situation");
+        // Начальная сцена уже включена в результат startCampaign
+        String initialScene = (String) campaign.get("initial_scene");
+        // Обратная совместимость: если initial_scene нет, пробуем initial_situation
+        if (initialScene == null || initialScene.isEmpty()) {
+            initialScene = (String) campaign.get("initial_situation");
+        }
+        
+        if (initialScene == null || initialScene.isEmpty()) {
+            System.err.println("⚠️ Начальная сцена не найдена в результате startCampaign");
+            initialScene = "Кампания началась!";
+        }
         
         // Обновляем статус игры для получения информации о мире (после генерации)
         gameStatus = campaignService.getGameStatus(campaignId);
@@ -441,22 +450,22 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
             System.err.println("⚠️ Мир не найден в gameStatus при начале кампании");
         }
         
-        // Формируем начальную ситуацию с квестом как заключением
+        // Формируем начальную сцену с квестом как заключением
         @SuppressWarnings("unchecked")
         Map<String, Object> mainQuest = (Map<String, Object>) campaign.get("main_quest");
-        String situationWithQuest = initialSituation;
+        String situationWithQuest = initialScene;
         
         // Добавляем квест как заключение, если есть quest_summary
         if (mainQuest != null) {
             String questSummary = (String) mainQuest.get("quest_summary");
             if (questSummary != null && !questSummary.trim().isEmpty()) {
-                // Проверяем, не включен ли уже квест в ситуацию (LLM мог включить его сам)
-                if (!initialSituation.contains(questSummary) && !initialSituation.contains("📜")) {
+                // Проверяем, не включен ли уже квест в сцену (LLM мог включить его сам)
+                if (!initialScene.contains(questSummary) && !initialScene.contains("📜")) {
                     // Добавляем квест как заключение с визуальным разделением
-                    situationWithQuest = initialSituation + "\n\n📜 " + questSummary;
+                    situationWithQuest = initialScene + "\n\n📜 " + questSummary;
                 } else {
-                    // Квест уже включен в ситуацию, используем как есть
-                    situationWithQuest = initialSituation;
+                    // Квест уже включен в сцену, используем как есть
+                    situationWithQuest = initialScene;
                 }
             } else {
                 System.err.println("⚠️ quest_summary отсутствует в квесте. Доступные поля: " + mainQuest.keySet());

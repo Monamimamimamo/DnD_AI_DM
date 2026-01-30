@@ -40,14 +40,14 @@ public class VectorDBService {
                              String locationContext, String npcContext,
                              String eventType) {
         // Проверяем, существует ли уже эмбеддинг для этого события
-        String checkSql = "SELECT id FROM event_embeddings WHERE event_id = ?";
+        String checkSql = "SELECT id FROM public.event_embeddings WHERE event_id = ?";
         List<Long> existing = jdbcTemplate.query(checkSql, 
                 (rs, rowNum) -> rs.getLong("id"), eventId);
         
         if (!existing.isEmpty()) {
             // Обновляем существующий
             String updateSql = """
-                UPDATE event_embeddings 
+                UPDATE public.event_embeddings 
                 SET embedding = ?::vector, 
                     description = ?, 
                     quest_context = ?, 
@@ -69,14 +69,14 @@ public class VectorDBService {
             
             return existing.get(0);
         } else {
-            // Создаем новый
-            String insertSql = """
-                INSERT INTO event_embeddings 
-                (event_id, campaign_id, embedding, description, quest_context, 
-                 location_context, npc_context, event_type)
-                VALUES (?, ?, ?::vector, ?, ?, ?, ?, ?)
-                RETURNING id
-                """;
+                // Создаем новый
+                String insertSql = """
+                    INSERT INTO public.event_embeddings 
+                    (event_id, campaign_id, embedding, description, quest_context, 
+                     location_context, npc_context, event_type)
+                    VALUES (?, ?, ?::vector, ?, ?, ?, ?, ?)
+                    RETURNING id
+                    """;
             
             Long id = jdbcTemplate.queryForObject(insertSql, Long.class,
                     eventId,
@@ -106,40 +106,40 @@ public class VectorDBService {
         String embeddingStr = arrayToString(queryEmbedding);
         
         // Если topK не указан или <= 0, получаем все релевантные события без ограничения
-        if (topK == null || topK <= 0) {
-            String sql = """
-                SELECT 
-                    e.event_id,
-                    e.description,
-                    e.quest_context,
-                    e.location_context,
-                    e.npc_context,
-                    e.event_type,
-                    1 - (e.embedding <=> ?::vector) as similarity
-                FROM event_embeddings e
-                WHERE e.campaign_id = ?
-                AND 1 - (e.embedding <=> ?::vector) >= ?
-                ORDER BY e.embedding <=> ?::vector
-                """;
+               if (topK == null || topK <= 0) {
+                   String sql = """
+                       SELECT
+                           e.event_id,
+                           e.description,
+                           e.quest_context,
+                           e.location_context,
+                           e.npc_context,
+                           e.event_type,
+                           1 - (e.embedding <=> ?::vector) as similarity
+                       FROM public.event_embeddings e
+                       WHERE e.campaign_id = ?
+                       AND 1 - (e.embedding <=> ?::vector) >= ?
+                       ORDER BY e.embedding <=> ?::vector
+                       """;
             
             return jdbcTemplate.query(sql, new SimilarEventRowMapper(),
                     embeddingStr, campaignId, embeddingStr, minSimilarity, embeddingStr);
-        } else {
-            String sql = """
-                SELECT 
-                    e.event_id,
-                    e.description,
-                    e.quest_context,
-                    e.location_context,
-                    e.npc_context,
-                    e.event_type,
-                    1 - (e.embedding <=> ?::vector) as similarity
-                FROM event_embeddings e
-                WHERE e.campaign_id = ?
-                AND 1 - (e.embedding <=> ?::vector) >= ?
-                ORDER BY e.embedding <=> ?::vector
-                LIMIT ?
-                """;
+               } else {
+                   String sql = """
+                       SELECT
+                           e.event_id,
+                           e.description,
+                           e.quest_context,
+                           e.location_context,
+                           e.npc_context,
+                           e.event_type,
+                           1 - (e.embedding <=> ?::vector) as similarity
+                       FROM public.event_embeddings e
+                       WHERE e.campaign_id = ?
+                       AND 1 - (e.embedding <=> ?::vector) >= ?
+                       ORDER BY e.embedding <=> ?::vector
+                       LIMIT ?
+                       """;
             
             return jdbcTemplate.query(sql, new SimilarEventRowMapper(),
                     embeddingStr, campaignId, embeddingStr, minSimilarity, embeddingStr, topK);
@@ -160,19 +160,19 @@ public class VectorDBService {
     public List<SimilarEvent> searchSimilarWithFilters(float[] queryEmbedding, Long campaignId,
                                                       String eventType, String location,
                                                       Integer topK, double minSimilarity) {
-        StringBuilder sql = new StringBuilder("""
-            SELECT 
-                e.event_id,
-                e.description,
-                e.quest_context,
-                e.location_context,
-                e.npc_context,
-                e.event_type,
-                1 - (e.embedding <=> ?::vector) as similarity
-            FROM event_embeddings e
-            WHERE e.campaign_id = ?
-            AND 1 - (e.embedding <=> ?::vector) >= ?
-            """);
+               StringBuilder sql = new StringBuilder("""
+                   SELECT
+                       e.event_id,
+                       e.description,
+                       e.quest_context,
+                       e.location_context,
+                       e.npc_context,
+                       e.event_type,
+                       1 - (e.embedding <=> ?::vector) as similarity
+                   FROM public.event_embeddings e
+                   WHERE e.campaign_id = ?
+                   AND 1 - (e.embedding <=> ?::vector) >= ?
+                   """);
         
         List<Object> params = new ArrayList<>();
         String embeddingStr = arrayToString(queryEmbedding);
@@ -210,18 +210,18 @@ public class VectorDBService {
      */
     @Transactional
     public void deleteEmbedding(Long eventId) {
-        String sql = "DELETE FROM event_embeddings WHERE event_id = ?";
+        String sql = "DELETE FROM public.event_embeddings WHERE event_id = ?";
         jdbcTemplate.update(sql, eventId);
     }
     
     /**
      * Удаляет все эмбеддинги кампании
-     * 
+     *
      * @param campaignId ID кампании
      */
     @Transactional
     public void deleteCampaignEmbeddings(Long campaignId) {
-        String sql = "DELETE FROM event_embeddings WHERE campaign_id = ?";
+        String sql = "DELETE FROM public.event_embeddings WHERE campaign_id = ?";
         jdbcTemplate.update(sql, campaignId);
     }
     
